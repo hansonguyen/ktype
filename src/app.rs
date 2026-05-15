@@ -1,6 +1,10 @@
 use anyhow::Result;
 use crossterm::event::{Event, KeyCode, KeyEventKind};
-use ratatui::Frame;
+use ratatui::{
+    Frame,
+    layout::{Alignment, Constraint, Layout},
+    widgets::Paragraph,
+};
 
 pub struct App {
     pub should_quit: bool,
@@ -18,8 +22,20 @@ impl App {
         Ok(())
     }
 
-    pub fn draw(&self, _frame: &mut Frame) {
-        // implemented in Task 3
+    pub fn draw(&self, frame: &mut Frame) {
+        let area = frame.area();
+
+        let vertical = Layout::vertical([
+            Constraint::Fill(1),
+            Constraint::Length(1),
+            Constraint::Fill(1),
+        ])
+        .split(area);
+
+        let text = Paragraph::new("kern — press Esc to quit")
+            .alignment(Alignment::Center);
+
+        frame.render_widget(text, vertical[1]);
     }
 }
 
