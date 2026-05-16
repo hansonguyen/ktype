@@ -2,6 +2,7 @@ use std::time::Duration;
 
 use crate::model::Word;
 
+#[cfg_attr(not(test), expect(dead_code))]
 pub fn wpm(correct_words: usize, elapsed: Duration) -> f64 {
     if elapsed < Duration::from_millis(1) {
         return 0.0;
@@ -9,6 +10,7 @@ pub fn wpm(correct_words: usize, elapsed: Duration) -> f64 {
     correct_words as f64 / elapsed.as_secs_f64() * 60.0
 }
 
+#[cfg_attr(not(test), expect(dead_code))]
 pub fn raw_wpm(committed_words: usize, elapsed: Duration) -> f64 {
     if elapsed < Duration::from_millis(1) {
         return 0.0;
@@ -16,6 +18,7 @@ pub fn raw_wpm(committed_words: usize, elapsed: Duration) -> f64 {
     committed_words as f64 / elapsed.as_secs_f64() * 60.0
 }
 
+#[cfg_attr(not(test), expect(dead_code))]
 pub fn accuracy(correct_chars: u64, total_chars_typed: u64) -> f64 {
     if total_chars_typed == 0 {
         return 0.0;
@@ -23,6 +26,7 @@ pub fn accuracy(correct_chars: u64, total_chars_typed: u64) -> f64 {
     correct_chars as f64 / total_chars_typed as f64 * 100.0
 }
 
+#[cfg_attr(not(test), expect(dead_code))]
 pub fn count_correct_words(words: &[Word]) -> usize {
     words
         .iter()
@@ -30,10 +34,12 @@ pub fn count_correct_words(words: &[Word]) -> usize {
         .count()
 }
 
+#[cfg_attr(not(test), expect(dead_code))]
 pub fn count_committed_words(words: &[Word]) -> usize {
     words.iter().filter(|w| w.committed).count()
 }
 
+#[cfg_attr(not(test), expect(dead_code))]
 pub fn count_correct_chars(words: &[Word]) -> u64 {
     words
         .iter()
@@ -47,8 +53,9 @@ pub fn count_correct_chars(words: &[Word]) -> u64 {
         .sum()
 }
 
+#[cfg_attr(not(test), expect(dead_code))]
 pub fn count_total_chars_typed(words: &[Word]) -> u64 {
-    words.iter().map(|w| w.typed.len() as u64).sum()
+    words.iter().map(|w| w.typed.chars().count() as u64).sum()
 }
 
 #[cfg(test)]
