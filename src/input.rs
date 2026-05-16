@@ -1,6 +1,6 @@
 use crate::model::Word;
 use crate::msg::Msg;
-use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
+use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CharState {
@@ -47,6 +47,7 @@ pub fn event_to_msg(event: Event) -> Option<Msg> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crossterm::event::KeyModifiers;
 
     fn make_word(text: &str, typed: &str) -> Word {
         let mut w = Word::new(text);
@@ -98,17 +99,26 @@ mod tests {
 
     #[test]
     fn char_key_maps_to_char_msg() {
-        assert_eq!(event_to_msg(key_press(KeyCode::Char('a'))), Some(Msg::Char('a')));
+        assert_eq!(
+            event_to_msg(key_press(KeyCode::Char('a'))),
+            Some(Msg::Char('a'))
+        );
     }
 
     #[test]
     fn space_key_maps_to_space_msg() {
-        assert_eq!(event_to_msg(key_press(KeyCode::Char(' '))), Some(Msg::Space));
+        assert_eq!(
+            event_to_msg(key_press(KeyCode::Char(' '))),
+            Some(Msg::Space)
+        );
     }
 
     #[test]
     fn backspace_maps_to_backspace_msg() {
-        assert_eq!(event_to_msg(key_press(KeyCode::Backspace)), Some(Msg::Backspace));
+        assert_eq!(
+            event_to_msg(key_press(KeyCode::Backspace)),
+            Some(Msg::Backspace)
+        );
     }
 
     #[test]

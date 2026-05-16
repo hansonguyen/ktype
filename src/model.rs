@@ -33,7 +33,8 @@ impl Word {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CursorStyle {
-    Block,     // filled background / inverted colors (default)
+    Block, // filled background / inverted colors (default)
+    #[expect(dead_code)]
     Underline, // not yet wired; Phase 6 polish
 }
 
@@ -41,8 +42,10 @@ pub enum CursorStyle {
 pub struct Config {
     pub word_count: usize,
     pub cursor_style: CursorStyle,
+    #[expect(dead_code)]
     pub punctuation: bool, // stubbed; wired in Phase 3
-    pub numbers: bool,     // stubbed; wired in Phase 3
+    #[expect(dead_code)]
+    pub numbers: bool, // stubbed; wired in Phase 3
 }
 
 impl Default for Config {

@@ -38,11 +38,11 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
     loop {
         terminal.draw(|frame| view(&model, frame))?;
 
-        if crossterm::event::poll(Duration::from_millis(16))? {
-            if let Some(msg) = input::event_to_msg(crossterm::event::read()?) {
-                let cmd = update(&mut model, msg);
-                execute_command(&mut model, cmd, &mut rng);
-            }
+        if crossterm::event::poll(Duration::from_millis(16))?
+            && let Some(msg) = input::event_to_msg(crossterm::event::read()?)
+        {
+            let cmd = update(&mut model, msg);
+            execute_command(&mut model, cmd, &mut rng);
         }
 
         if model.screen == model::Screen::Quitting {

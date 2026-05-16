@@ -6,7 +6,7 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-use crate::input::{char_state, CharState};
+use crate::input::{CharState, char_state};
 use crate::model::{CursorStyle, Model, Screen, TestStatus};
 
 pub fn view(model: &Model, frame: &mut Frame) {
@@ -21,8 +21,7 @@ pub fn view(model: &Model, frame: &mut Frame) {
 
 fn render_done(frame: &mut Frame) {
     let area = frame.area();
-    let msg = Paragraph::new("test complete — press tab to restart")
-        .alignment(Alignment::Center);
+    let msg = Paragraph::new("test complete — press tab to restart").alignment(Alignment::Center);
 
     let vertical = Layout::vertical([
         Constraint::Fill(1),
@@ -100,7 +99,11 @@ fn word_line_indices(words: &[crate::model::Word], width: u16) -> Vec<usize> {
         // cascade every subsequent word onto its own line.
         let word_len = word.chars.len().min(max_width.max(1));
         // Words at the start of a line need no preceding space.
-        let needed = if line_width == 0 { word_len } else { 1 + word_len };
+        let needed = if line_width == 0 {
+            word_len
+        } else {
+            1 + word_len
+        };
 
         if line_width > 0 && line_width + 1 + word_len > max_width {
             current_line += 1;
@@ -148,9 +151,8 @@ fn build_word_lines<'a>(model: &Model, width: u16) -> Vec<Line<'a>> {
             // When a word is fully typed, typed.len() == chars.len(), so
             // this condition is never true and the cursor naturally disappears
             // until Space is pressed to commit the word.
-            let is_cursor = word_idx == current_word
-                && char_idx == word.typed.len()
-                && !word.committed;
+            let is_cursor =
+                word_idx == current_word && char_idx == word.typed.len() && !word.committed;
 
             let style = if is_cursor {
                 cursor_style(&model.config.cursor_style)
@@ -242,11 +244,7 @@ mod tests {
 
     #[test]
     fn typing_screen_snapshot() {
-        let model = test_model(
-            &["the", "quick", "brown", "fox"],
-            1,
-            &["the", "qu"],
-        );
+        let model = test_model(&["the", "quick", "brown", "fox"], 1, &["the", "qu"]);
         let output = render_to_string(&model, 80, 24);
         insta::assert_snapshot!(output);
     }

@@ -1,5 +1,5 @@
 use crate::commands::Command;
-use crate::model::{Model, Screen, SessionState, TestStatus, Word};
+use crate::model::{Model, Screen, TestStatus};
 use crate::msg::Msg;
 
 pub fn update(model: &mut Model, msg: Msg) -> Command {
@@ -70,14 +70,12 @@ pub fn update(model: &mut Model, msg: Msg) -> Command {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::Config;
+    use crate::model::{Config, SessionState, Word};
 
     fn model_with_words(words: &[&str]) -> Model {
         Model {
             screen: Screen::Typing,
-            session: SessionState::new(
-                words.iter().map(|w| Word::new(w)).collect(),
-            ),
+            session: SessionState::new(words.iter().map(|w| Word::new(w)).collect()),
             config: Config::default(),
         }
     }
@@ -190,7 +188,7 @@ mod tests {
 #[cfg(test)]
 mod prop_tests {
     use super::*;
-    use crate::model::Config;
+    use crate::model::{Config, SessionState, Word};
     use proptest::prelude::*;
 
     fn arb_msg() -> impl Strategy<Value = Msg> {
