@@ -10,3 +10,8 @@ name = "kern"
 ratatui = "0.29"
 crossterm = "0.28"
 anyhow = "1"
+rand = "0.10"
+
+[dev-dependencies]
+proptest = "1.11"
+insta = { version = "1.47", features = ["yaml"] }
