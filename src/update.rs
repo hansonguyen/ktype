@@ -1,5 +1,7 @@
+use std::time::Duration;
+
 use crate::commands::Command;
-use crate::model::{Model, Screen, TestStatus};
+use crate::model::{Model, Screen, TestStatus, DURATION_OPTIONS};
 use crate::msg::Msg;
 
 pub fn update(model: &mut Model, msg: Msg) -> Command {
@@ -9,6 +11,13 @@ pub fn update(model: &mut Model, msg: Msg) -> Command {
         }
 
         Msg::Tab => {
+            if model.session.status != TestStatus::Running {
+                let next_idx =
+                    (model.config.selected_duration_idx + 1) % DURATION_OPTIONS.len();
+                model.config.selected_duration_idx = next_idx;
+                model.config.time_limit =
+                    Duration::from_secs(DURATION_OPTIONS[next_idx]);
+            }
             model.screen = Screen::Typing;
             return Command::GenerateWords {
                 count: model.config.word_count,
@@ -191,6 +200,50 @@ mod tests {
         model.screen = Screen::Done;
         update(&mut model, Msg::Tab);
         assert_eq!(model.screen, Screen::Typing);
+    }
+
+    #[test]
+    fn tab_while_waiting_cycles_to_next_duration() {
+        let mut model = model_with_words(&["hello"]);
+        assert_eq!(model.session.status, TestStatus::Waiting);
+        update(&mut model, Msg::Tab);
+        assert_eq!(model.config.selected_duration_idx, 1);
+        assert_eq!(model.config.time_limit, Duration::from_secs(30));
+    }
+
+    #[test]
+    fn tab_cycles_through_all_durations() {
+        // Note: in unit tests Command::GenerateWords is not executed,
+        // so session.status stays Waiting across all three Tab calls.
+        let mut model = model_with_words(&["hello"]);
+        update(&mut model, Msg::Tab); // 0 → 1 (30s)
+        assert_eq!(model.config.selected_duration_idx, 1);
+        update(&mut model, Msg::Tab); // 1 → 2 (60s)
+        assert_eq!(model.config.selected_duration_idx, 2);
+        update(&mut model, Msg::Tab); // 2 → 0 (15s, wraps)
+        assert_eq!(model.config.selected_duration_idx, 0);
+        assert_eq!(model.config.time_limit, Duration::from_secs(15));
+    }
+
+    #[test]
+    fn tab_while_running_does_not_cycle() {
+        let mut model = model_with_words(&["hello"]);
+        update(&mut model, Msg::Char('h')); // transitions status to Running
+        assert_eq!(model.session.status, TestStatus::Running);
+        update(&mut model, Msg::Tab);
+        assert_eq!(model.config.selected_duration_idx, 0);
+        assert_eq!(model.config.time_limit, Duration::from_secs(15));
+    }
+
+    #[test]
+    fn tab_while_done_cycles_duration() {
+        let mut model = model_with_words(&["hi"]);
+        update(&mut model, Msg::Char('h'));
+        update(&mut model, Msg::Space); // transitions to Done
+        assert_eq!(model.screen, Screen::Done);
+        update(&mut model, Msg::Tab);
+        assert_eq!(model.config.selected_duration_idx, 1);
+        assert_eq!(model.config.time_limit, Duration::from_secs(30));
     }
 
     #[test]
