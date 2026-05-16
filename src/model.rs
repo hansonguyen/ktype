@@ -44,7 +44,7 @@ pub enum CursorStyle {
 pub struct Config {
     pub word_count: usize,
     pub cursor_style: CursorStyle,
-    #[expect(dead_code)]
+    #[allow(dead_code)]
     pub time_limit: Duration,
     #[expect(dead_code)]
     pub punctuation: bool, // stubbed; wired in Phase 3
@@ -69,7 +69,7 @@ pub struct SessionState {
     pub words: Vec<Word>,
     pub current_word: usize,
     pub status: TestStatus,
-    #[expect(dead_code)]
+    #[allow(dead_code)]
     pub elapsed: Duration,
 }
 
