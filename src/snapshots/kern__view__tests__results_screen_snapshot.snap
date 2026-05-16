@@ -10,10 +10,11 @@ expression: output
                                                                                 
                                                                                 
                                                                                 
+                                  [15]  30  60                                  
                                                                                 
                                       kern                                      
                                                                                 
                            wpm       raw wpm        acc                         
                              12          18         85%                         
                                                                                 
-                           [tab] restart   [esc] quit
+                        [tab] change/restart   [esc] quit

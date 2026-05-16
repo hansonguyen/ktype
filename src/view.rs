@@ -8,7 +8,7 @@ use ratatui::{
 
 use crate::input::{CharState, char_state};
 use crate::metrics;
-use crate::model::{CursorStyle, Model, Screen, TestStatus};
+use crate::model::{CursorStyle, DURATION_OPTIONS, Model, Screen, TestStatus};
 
 pub fn view(model: &Model, frame: &mut Frame) {
     match model.screen {
@@ -35,6 +35,8 @@ fn render_results(model: &Model, frame: &mut Frame) {
 
     let vertical = Layout::vertical([
         Constraint::Fill(1),
+        Constraint::Length(1), // duration strip
+        Constraint::Length(1), // spacer
         Constraint::Length(1), // "kern"
         Constraint::Length(1), // spacer
         Constraint::Length(1), // metric labels
@@ -46,12 +48,21 @@ fn render_results(model: &Model, frame: &mut Frame) {
     .split(area);
 
     frame.render_widget(
+        Paragraph::new(Line::from(duration_strip_spans(
+            model.config.selected_duration_idx,
+            false,
+        )))
+        .alignment(Alignment::Center),
+        vertical[1],
+    );
+
+    frame.render_widget(
         Paragraph::new(Span::styled(
             "kern",
             Style::new().add_modifier(Modifier::BOLD),
         ))
         .alignment(Alignment::Center),
-        vertical[1],
+        vertical[3],
     );
 
     frame.render_widget(
@@ -60,7 +71,7 @@ fn render_results(model: &Model, frame: &mut Frame) {
             Style::new().dim(),
         ))
         .alignment(Alignment::Center),
-        vertical[3],
+        vertical[5],
     );
 
     frame.render_widget(
@@ -72,18 +83,39 @@ fn render_results(model: &Model, frame: &mut Frame) {
             Span::raw(format!("{:>4.0}%", acc_val)),
         ]))
         .alignment(Alignment::Center),
-        vertical[4],
+        vertical[6],
     );
 
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled("[tab] restart", Style::new().dim()),
+            Span::styled("[tab] change/restart", Style::new().dim()),
             Span::raw("   "),
             Span::styled("[esc] quit", Style::new().dim()),
         ]))
         .alignment(Alignment::Center),
-        vertical[6],
+        vertical[8],
     );
+}
+
+fn duration_strip_spans<'a>(selected_idx: usize, dimmed: bool) -> Vec<Span<'a>> {
+    let mut spans = Vec::new();
+    for (i, &secs) in DURATION_OPTIONS.iter().enumerate() {
+        if i > 0 {
+            spans.push(Span::raw("  "));
+        }
+        let label = if i == selected_idx {
+            format!("[{}]", secs)
+        } else {
+            secs.to_string()
+        };
+        let style = if i == selected_idx && !dimmed {
+            Style::new().add_modifier(Modifier::BOLD)
+        } else {
+            Style::new().dim()
+        };
+        spans.push(Span::styled(label, style));
+    }
+    spans
 }
 
 fn render_typing(model: &Model, frame: &mut Frame) {
@@ -112,22 +144,30 @@ fn render_typing(model: &Model, frame: &mut Frame) {
     let words_area = vertical[3];
     let footer_area = vertical[5];
 
-    // Header: show countdown timer. Static when Waiting, live when Running.
-    let countdown = model
-        .config
-        .time_limit
-        .saturating_sub(model.session.elapsed);
-    let time_text = match model.session.status {
-        TestStatus::Waiting | TestStatus::Running => format!("{}s", countdown.as_secs()),
-        TestStatus::Done => String::from("done"),
-    };
-    let header = Paragraph::new(Line::from(vec![
+    // Header: duration strip always visible; countdown appended only while Running.
+    let is_running = model.session.status == TestStatus::Running;
+    let mut header_spans: Vec<Span> = vec![
         Span::styled("kern", Style::new().add_modifier(Modifier::BOLD)),
         Span::raw("  "),
-        Span::styled(time_text, Style::new().dim()),
-        Span::raw("  "),
-        Span::styled("[tab] restart", Style::new().dim()),
-    ]));
+    ];
+    header_spans.extend(duration_strip_spans(
+        model.config.selected_duration_idx,
+        is_running,
+    ));
+    if is_running {
+        let countdown = model
+            .config
+            .time_limit
+            .saturating_sub(model.session.elapsed);
+        header_spans.push(Span::raw("  ·  "));
+        header_spans.push(Span::styled(
+            format!("{}s", countdown.as_secs()),
+            Style::new().dim(),
+        ));
+    }
+    header_spans.push(Span::raw("  "));
+    header_spans.push(Span::styled("[tab] restart", Style::new().dim()));
+    let header = Paragraph::new(Line::from(header_spans));
     frame.render_widget(header, header_area);
 
     let word_lines = build_word_lines(model, words_area.width);

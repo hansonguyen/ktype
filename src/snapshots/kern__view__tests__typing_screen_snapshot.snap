@@ -11,7 +11,7 @@ expression: output
                                                                                 
                                                                                 
                                                                                 
-kern  15s  [tab] restart                                                        
+kern  [15]  30  60  ·  15s  [tab] restart                                       
                                                                                 
 the quick brown fox                                                             
                                                                                 
