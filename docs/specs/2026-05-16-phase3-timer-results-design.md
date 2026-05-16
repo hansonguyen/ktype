@@ -2,7 +2,9 @@
 
 ## Overview
 
-Phase 3 adds a 60-second countdown timer and a basic results screen to Kern. The test ends when the timer hits zero or all words are completed, whichever comes first. Results show WPM, raw WPM, and accuracy. Tab on the results screen restarts a fresh test. All results are in-memory only — no persistence.
+Phase 3 adds a 15-second countdown timer and a basic results screen to Kern. The test ends when the timer hits zero or all words are completed, whichever comes first. Results show WPM, raw WPM, and accuracy. Tab on the results screen restarts a fresh test. All results are in-memory only — no persistence.
+
+**Mode:** Phase 3 is always time mode. The existing 25-word set acts as a ceiling (test also ends if all words are typed before time expires), but the timer is the primary end condition. A word/time mode toggle is deferred to a later phase. There are no CLI flags or in-app mode selectors in this phase.
 
 ---
 
@@ -41,7 +43,7 @@ pub struct SessionState {
 pub struct Config {
     pub word_count: usize,
     pub cursor_style: CursorStyle,
-    pub time_limit: Duration,  // new: default Duration::from_secs(60)
+    pub time_limit: Duration,  // new: default Duration::from_secs(15)
     pub punctuation: bool,
     pub numbers: bool,
 }
@@ -125,10 +127,10 @@ Metrics are computed in `view` on demand — not stored in `Model`. The session'
 
 Replaces the static `"words: N"` info slot with a live countdown:
 
-- `Waiting`: show `"60"` dimmed (static preview of the time limit)
+- `Waiting`: show `"15"` dimmed (static preview of the time limit)
 - `Running`: show `(config.time_limit.saturating_sub(session.elapsed)).as_secs()` — counts down to 0
 
-Header format: `kern  45  [tab] restart`
+Header format: `kern  12  [tab] restart`
 
 ### Results screen (`render_results`, replaces `render_done`)
 
@@ -159,7 +161,7 @@ Pure functions with fixed word slices and durations. Cover: zero elapsed edge ca
 ### `update.rs` — timer tests
 ```rust
 // Simulate expiry with synthetic Duration — no Instant needed
-update(&mut model, Msg::Tick(Duration::from_secs(61)));
+update(&mut model, Msg::Tick(Duration::from_secs(16)));
 assert_eq!(model.screen, Screen::Done);
 assert_eq!(model.session.status, TestStatus::Done);
 
