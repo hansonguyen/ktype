@@ -1,0 +1,21 @@
+---
+source: src/view.rs
+assertion_line: 239
+expression: output
+---
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+kern  words: 25  [tab] restart                                                  
+                                                                                
+the quick brown fox                                                             
+                                                                                
+                                                                                
+                                                                                
+[esc] quit
