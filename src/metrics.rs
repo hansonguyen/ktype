@@ -169,10 +169,7 @@ mod tests {
 
     #[test]
     fn count_total_chars_typed_sums_all_typed() {
-        let words = vec![
-            word("hello", "hel", true),
-            word("world", "wo", false),
-        ];
+        let words = vec![word("hello", "hel", true), word("world", "wo", false)];
         assert_eq!(count_total_chars_typed(&words), 5);
     }
 }
