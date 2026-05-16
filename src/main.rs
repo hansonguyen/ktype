@@ -1,4 +1,11 @@
 mod app;
+mod commands;
+mod generator;
+mod input;
+mod model;
+mod msg;
+mod update;
+mod view;
 
 use anyhow::Result;
 use app::App;
