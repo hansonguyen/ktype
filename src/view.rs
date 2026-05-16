@@ -331,6 +331,14 @@ mod tests {
     }
 
     #[test]
+    fn typing_screen_waiting_snapshot() {
+        let mut model = test_model(&["the", "quick", "brown", "fox"], 0, &[]);
+        model.session.status = crate::model::TestStatus::Waiting;
+        let output = render_to_string(&model, 80, 24);
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
     fn results_screen_snapshot() {
         let words = vec![
             {
