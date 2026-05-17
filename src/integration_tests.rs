@@ -58,3 +58,29 @@ fn timer_expiry_saves_stats() {
     assert_eq!(model.session.status, TestStatus::Done);
     assert_eq!(model.history.len(), 1);
 }
+
+#[test]
+fn tab_from_done_resets_session() {
+    let mut rng = SmallRng::seed_from_u64(0);
+    let mut model = two_word_model();
+
+    // Drive to Done via word completion
+    update(&mut model, Msg::Char('h'));
+    let cmd = update(&mut model, Msg::Space);
+    execute_command(&mut model, cmd, &mut rng);
+    update(&mut model, Msg::Char('o'));
+    let cmd = update(&mut model, Msg::Space);
+    execute_command(&mut model, cmd, &mut rng);
+    assert_eq!(model.screen, Screen::Done);
+
+    // Tab from Done: cycles duration (Done status != Running) and resets session
+    let cmd = update(&mut model, Msg::Tab);
+    assert!(matches!(cmd, Command::GenerateWords { .. }));
+    execute_command(&mut model, cmd, &mut rng);
+
+    assert_eq!(model.screen, Screen::Typing);
+    assert_eq!(model.session.status, TestStatus::Waiting);
+    assert_eq!(model.session.words.len(), model.config.word_count);
+    // Duration cycles: 0 → 1 (15s → 30s)
+    assert_eq!(model.config.selected_duration_idx, 1);
+}
