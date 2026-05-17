@@ -29,6 +29,10 @@ fn main() -> Result<()> {
 fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
     let mut rng: SmallRng = rand::make_rng();
     let mut model = Model::default();
+    match persistence::load() {
+        Ok(history) => model.history = history,
+        Err(e) => eprintln!("kern: failed to load stats: {e}"),
+    }
     // timer_start is infrastructure — not app state. Owned here alongside rng.
     let mut timer_start: Option<Instant> = None;
 
