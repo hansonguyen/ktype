@@ -1,6 +1,6 @@
 [package]
 name = "ktype"
-version = "0.1.1"
+version = "0.2.1"
 edition = "2024"
 rust-version = "1.85"
 description = "A terminal-native typing test inspired by Monkeytype — fast, minimal, and offline-first."
