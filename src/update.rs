@@ -1,8 +1,22 @@
 use std::time::Duration;
 
-use crate::commands::Command;
+use crate::commands::{Command, StatsPayload};
+use crate::metrics;
 use crate::model::{DURATION_OPTIONS, Model, Screen, TestStatus};
 use crate::msg::Msg;
+
+fn build_stats_payload(model: &Model) -> StatsPayload {
+    let correct_words = metrics::count_correct_words(&model.session.words);
+    let committed_words = metrics::count_committed_words(&model.session.words);
+    let correct_chars = metrics::count_correct_chars(&model.session.words);
+    let total_chars = metrics::count_total_chars_typed(&model.session.words);
+    StatsPayload {
+        duration_secs: DURATION_OPTIONS[model.config.selected_duration_idx],
+        wpm: metrics::wpm(correct_words, model.session.elapsed),
+        raw_wpm: metrics::raw_wpm(committed_words, model.session.elapsed),
+        accuracy: metrics::accuracy(correct_chars, total_chars),
+    }
+}
 
 pub fn update(model: &mut Model, msg: Msg) -> Command {
     match msg {
@@ -61,6 +75,7 @@ pub fn update(model: &mut Model, msg: Msg) -> Command {
             if is_last {
                 session.status = TestStatus::Done;
                 model.screen = Screen::Done;
+                return Command::SaveStats(build_stats_payload(model));
             } else {
                 session.current_word += 1;
             }
@@ -74,6 +89,7 @@ pub fn update(model: &mut Model, msg: Msg) -> Command {
             if elapsed >= model.config.time_limit {
                 model.session.status = TestStatus::Done;
                 model.screen = Screen::Done;
+                return Command::SaveStats(build_stats_payload(model));
             }
         }
     }
@@ -291,6 +307,22 @@ mod tests {
         update(&mut model, Msg::Tick(Duration::from_secs(100)));
         assert_eq!(model.session.elapsed, elapsed_before);
         assert_eq!(model.screen, Screen::Done);
+    }
+
+    #[test]
+    fn space_on_last_word_returns_save_stats_command() {
+        let mut model = model_with_words(&["hi"]);
+        update(&mut model, Msg::Char('h'));
+        let cmd = update(&mut model, Msg::Space);
+        assert!(matches!(cmd, Command::SaveStats(_)));
+    }
+
+    #[test]
+    fn tick_at_time_limit_returns_save_stats_command() {
+        let mut model = model_with_words(&["hello"]);
+        update(&mut model, Msg::Char('h'));
+        let cmd = update(&mut model, Msg::Tick(Duration::from_secs(15)));
+        assert!(matches!(cmd, Command::SaveStats(_)));
     }
 }
 
