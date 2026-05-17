@@ -2,6 +2,13 @@
 name = "kern"
 version = "0.1.0"
 edition = "2024"
+description = "A terminal-native typing test inspired by Monkeytype — fast, minimal, and offline-first."
+license = "MIT"
+repository = "https://github.com/hansonguyen/kern"
+homepage = "https://github.com/hansonguyen/kern"
+keywords = ["typing", "terminal", "wpm", "tui", "monkeytype"]
+categories = ["command-line-utilities"]
+exclude = [".github", "docs"]
 
 [[bin]]
 name = "kern"
@@ -19,3 +26,8 @@ thiserror = "2"
 proptest = "1.11"
 insta = { version = "1.47", features = ["yaml"] }
 tempfile = "3"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
