@@ -375,4 +375,19 @@ mod tests {
         let output = render_to_string(&model, 80, 24);
         insta::assert_snapshot!(output);
     }
+
+    #[test]
+    fn typing_screen_running_variants_snapshot() {
+        // elapsed = 0: countdown shows full 15s
+        let model = test_model(&["the", "quick", "brown"], 1, &["the", "qu"]);
+        // test_model sets status = Running and elapsed = ZERO already
+        let output = render_to_string(&model, 80, 24);
+        insta::assert_snapshot!("running_elapsed_zero", output);
+
+        // elapsed = 5s: countdown shows 10s (15s − 5s)
+        let mut model = test_model(&["the", "quick", "brown"], 1, &["the", "qu"]);
+        model.session.elapsed = Duration::from_secs(5);
+        let output = render_to_string(&model, 80, 24);
+        insta::assert_snapshot!("running_elapsed_5s", output);
+    }
 }

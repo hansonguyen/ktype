@@ -1,0 +1,20 @@
+---
+source: src/view.rs
+expression: output
+---
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+kern  [15]  30  60  ·  10s  [tab] restart                                       
+                                                                                
+the quick brown                                                                 
+                                                                                
+                                                                                
+                                                                                
+[esc] quit
