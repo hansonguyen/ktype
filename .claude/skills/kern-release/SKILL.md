@@ -7,9 +7,11 @@ description: Use when releasing a new version of kern to crates.io. Covers pre-f
 
 ## Overview
 
-Guides a full kern release: pre-flight → semver determination → version bump → commit → tag → push → crates.io publish.
+Guides a full kern release: pre-flight → semver determination → version bump → commit → tag → push.
 
-**This skill is rigid. Follow every step in order. Do not skip pre-flight. Do not push or publish before user confirmation.**
+Pushing the `vX.Y.Z` tag triggers the `publish` GitHub Actions job automatically — `cargo publish` runs in CI, not locally.
+
+**This skill is rigid. Follow every step in order. Do not skip pre-flight. Do not push before user confirmation.**
 
 ---
 
@@ -109,7 +111,7 @@ Expected: `vX.Y.Z`
 
 ---
 
-## Step 5: Push and Publish Confirmation
+## Step 5: Push Confirmation
 
 Show a summary:
 
@@ -121,33 +123,34 @@ Ready to release:
 
 This will:
   1. git push origin main
-  2. git push origin vX.Y.Z
-  3. cargo publish
+  2. git push origin vX.Y.Z  ← triggers CI publish job automatically
 
 Proceed? (yes / no)
 ```
 
 **Wait for explicit "yes" before running any of these commands.**
 
-If "no" → tell the user the commit and tag exist locally; they can push and publish manually when ready.
+If "no" → tell the user the commit and tag exist locally; they can push manually when ready.
 
 ---
 
-## Step 6: Push and Publish
+## Step 6: Push
 
 Only run if user said yes in Step 5.
 
 ```bash
 git push origin main
 git push origin vX.Y.Z
-cargo publish
 ```
 
-After `cargo publish` succeeds, confirm:
+After both pushes succeed, confirm:
 
 ```
-Released kern vX.Y.Z to crates.io.
-https://crates.io/crates/kern/X.Y.Z
+Tag vX.Y.Z pushed. The CI publish job is now running:
+https://github.com/hansonguyen/kern/actions
+
+cargo publish runs automatically once the ci matrix passes.
+crates.io page: https://crates.io/crates/kern
 ```
 
 ---
@@ -156,10 +159,10 @@ https://crates.io/crates/kern/X.Y.Z
 
 **Skipping pre-flight:** Publishes broken code. Pre-flight is mandatory.
 
-**Pushing before user confirmation:** Step 5 exists because push + publish are irreversible. Always confirm.
+**Pushing before user confirmation:** Step 5 exists because pushes are irreversible once CI triggers. Always confirm.
 
-**Forgetting `cargo build` after version bump:** `Cargo.lock` won't match `Cargo.toml`, causing publish warnings.
+**Forgetting `cargo build` after version bump:** `Cargo.lock` won't match `Cargo.toml`, causing publish warnings in CI.
 
-**Not pushing the tag:** `git push origin main` alone doesn't push tags. Push the tag separately with `git push origin vX.Y.Z`.
+**Not pushing the tag:** `git push origin main` alone doesn't push tags. Push the tag separately with `git push origin vX.Y.Z` — this is what triggers the CI publish job.
 
-**Publishing before pushing:** If publish succeeds but push fails, crates.io has the release but the repo doesn't have the tag. Always push first.
+**Running `cargo publish` locally:** Don't. CI handles it. Running it locally first will cause the CI publish job to fail with "version already uploaded".
