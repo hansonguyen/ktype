@@ -1,9 +1,13 @@
 use ratatui::{
     Frame,
-    layout::{Alignment, Constraint, Layout},
+    layout::{Alignment, Constraint, Layout, Rect},
     style::{Color, Modifier, Style, Stylize},
+    symbols::Marker,
     text::{Line, Span},
-    widgets::Paragraph,
+    widgets::{
+        Paragraph,
+        canvas::{Canvas, Line as CanvasLine},
+    },
 };
 
 use crate::input::{CharState, char_state};
@@ -40,19 +44,19 @@ fn render_results(model: &Model, frame: &mut Frame) {
     };
 
     let vertical = Layout::vertical([
-        Constraint::Fill(1),
-        Constraint::Length(1), // duration strip
+        Constraint::Length(1), // config/mode strip
         Constraint::Length(1), // spacer
-        Constraint::Length(1), // "ktype"
+        Constraint::Length(1), // "ktype" title
         Constraint::Length(1), // spacer
         Constraint::Length(1), // metric labels
         Constraint::Length(1), // metric values
         Constraint::Length(1), // spacer
+        Constraint::Fill(1),   // chart
         Constraint::Length(1), // footer
-        Constraint::Fill(1),
     ])
     .split(area);
 
+    // Config/mode strip
     let mut result_header: Vec<Span> = Vec::new();
     result_header.extend(mode_selector_spans(&model.config.test_mode, false));
     result_header.push(Span::raw("   "));
@@ -68,27 +72,30 @@ fn render_results(model: &Model, frame: &mut Frame) {
     }
     frame.render_widget(
         Paragraph::new(Line::from(result_header)).alignment(Alignment::Center),
-        vertical[1],
+        vertical[0],
     );
 
+    // Title
     frame.render_widget(
         Paragraph::new(Span::styled(
             "ktype",
             Style::new().add_modifier(Modifier::BOLD),
         ))
         .alignment(Alignment::Center),
-        vertical[3],
+        vertical[2],
     );
 
+    // Metric labels
     frame.render_widget(
         Paragraph::new(Span::styled(
             "  wpm       raw wpm        acc",
             Style::new().dim(),
         ))
         .alignment(Alignment::Center),
-        vertical[5],
+        vertical[4],
     );
 
+    // Metric values
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::raw(format!("{:>5.0}", wpm_val)),
@@ -98,9 +105,13 @@ fn render_results(model: &Model, frame: &mut Frame) {
             Span::raw(format!("{:>4.0}%", acc_val)),
         ]))
         .alignment(Alignment::Center),
-        vertical[6],
+        vertical[5],
     );
 
+    // Chart
+    render_chart(model, frame, vertical[7]);
+
+    // Footer
     frame.render_widget(
         Paragraph::new(Line::from(vec![
             Span::styled("[tab] change/restart", Style::new().dim()),
@@ -109,6 +120,135 @@ fn render_results(model: &Model, frame: &mut Frame) {
         ]))
         .alignment(Alignment::Center),
         vertical[8],
+    );
+}
+
+fn render_chart(model: &Model, frame: &mut Frame, area: Rect) {
+    let wpm_history = &model.session.wpm_history;
+
+    if wpm_history.is_empty() {
+        frame.render_widget(
+            Paragraph::new(Span::styled("no data", Style::new().dim()))
+                .alignment(Alignment::Center),
+            area,
+        );
+        return;
+    }
+
+    let max_wpm = wpm_history.iter().cloned().fold(0.0_f64, f64::max).max(1.0);
+    let y_bound_max = max_wpm * 1.1;
+    let max_t = wpm_history.len() as f64;
+
+    // Per-second error deltas from cumulative history
+    let error_history = &model.session.error_history;
+    let error_deltas: Vec<u64> = error_history
+        .iter()
+        .enumerate()
+        .map(|(i, &cum)| {
+            if i == 0 {
+                cum
+            } else {
+                cum.saturating_sub(error_history[i - 1])
+            }
+        })
+        .collect();
+    let max_error_delta = error_deltas.iter().cloned().max().unwrap_or(1).max(1);
+
+    debug_assert_eq!(
+        wpm_history.len(),
+        error_history.len(),
+        "wpm_history and error_history must be kept in sync"
+    );
+
+    // Layout: y-labels strip | canvas area
+    let y_label_width = 5u16;
+    let chart_h = Layout::horizontal([
+        Constraint::Length(y_label_width),
+        Constraint::Fill(1),
+    ])
+    .split(area);
+
+    let canvas_v = Layout::vertical([
+        Constraint::Fill(1),
+        Constraint::Length(1), // x-axis labels
+    ])
+    .split(chart_h[1]);
+
+    let canvas_area = canvas_v[0];
+    let x_labels_area = canvas_v[1];
+
+    // Y-axis labels: 5 evenly-spaced values top-to-bottom
+    let canvas_height = canvas_area.height as usize;
+    let mut y_lines: Vec<Line> = vec![Line::default(); canvas_height];
+    for i in 0..5usize {
+        let value = y_bound_max * (4 - i) as f64 / 4.0;
+        let row = i * canvas_height.saturating_sub(1) / 4;
+        if row < canvas_height {
+            y_lines[row] = Line::from(Span::styled(
+                format!("{:>4.0}", value),
+                Style::new().dim(),
+            ));
+        }
+    }
+    frame.render_widget(Paragraph::new(y_lines), chart_h[0]);
+
+    // X-axis labels: second markers spaced to canvas width
+    let canvas_width = canvas_area.width as usize;
+    let n_secs = wpm_history.len();
+    let interval = if n_secs <= 15 { 1 } else if n_secs <= 60 { 5 } else { 10 };
+    let mut x_buf = vec![b' '; canvas_width];
+    for t in (interval..=n_secs).step_by(interval) {
+        let col = (t * canvas_width) / n_secs;
+        let label = t.to_string();
+        let start = col.saturating_sub(label.len() / 2);
+        for (j, b) in label.bytes().enumerate() {
+            if start + j < canvas_width {
+                x_buf[start + j] = b;
+            }
+        }
+    }
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            String::from_utf8_lossy(&x_buf).into_owned(),
+            Style::new().dim(),
+        )),
+        x_labels_area,
+    );
+
+    // Canvas: WPM line + error markers
+    frame.render_widget(
+        Canvas::default()
+            .x_bounds([0.0, max_t])
+            .y_bounds([0.0, y_bound_max])
+            .marker(Marker::Braille)
+            .paint(|ctx| {
+                // WPM line segments
+                for i in 1..wpm_history.len() {
+                    ctx.draw(&CanvasLine {
+                        x1: (i - 1) as f64,
+                        y1: wpm_history[i - 1],
+                        x2: i as f64,
+                        y2: wpm_history[i],
+                        color: Color::LightBlue,
+                    });
+                }
+                // Error markers (× in red, scaled into WPM range)
+                for (i, &delta) in error_deltas.iter().enumerate() {
+                    if delta > 0 {
+                        let scaled_y =
+                            (delta as f64 / max_error_delta as f64) * max_wpm;
+                        ctx.print(
+                            i as f64 + 0.5,
+                            scaled_y,
+                            Line::from(Span::styled(
+                                "×",
+                                Style::new().fg(Color::Red),
+                            )),
+                        );
+                    }
+                }
+            }),
+        canvas_area,
     );
 }
 
@@ -527,5 +667,40 @@ mod tests {
         };
         let output = render_to_string(&model, 80, 24);
         insta::assert_snapshot!("words_mode_running", output);
+    }
+
+    #[test]
+    fn results_screen_with_chart_snapshot() {
+        let words = vec![
+            {
+                let mut w = Word::new("the");
+                w.typed = "the".to_string();
+                w.committed = true;
+                w
+            },
+            {
+                let mut w = Word::new("quick");
+                w.typed = "quick".to_string();
+                w.committed = true;
+                w
+            },
+        ];
+        let model = Model {
+            screen: Screen::Done,
+            session: SessionState {
+                words,
+                current_word: 1,
+                status: crate::model::TestStatus::Done,
+                elapsed: Duration::from_secs(5),
+                total_chars_typed: 10,
+                total_errors: 1,
+                wpm_history: vec![0.0, 20.0, 24.0, 24.0, 24.0],
+                error_history: vec![0, 1, 1, 1, 1],
+            },
+            config: Config::default(),
+            history: Vec::new(),
+        };
+        let output = render_to_string(&model, 80, 24);
+        insta::assert_snapshot!(output);
     }
 }

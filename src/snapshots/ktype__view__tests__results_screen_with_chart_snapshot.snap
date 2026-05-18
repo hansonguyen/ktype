@@ -1,0 +1,28 @@
+---
+source: src/view.rs
+expression: output
+---
+                           [time] words   [15]  30  60                          
+                                                                                
+                                      ktype                                     
+                                                                                
+                           wpm       raw wpm        acc                         
+                             24          24         90%                         
+                                                                                
+  26                                                                            
+                           ×  ⢀⣀⡠⠤⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒⠒               
+                        ⣀⡠⠤⠔⠒⠉⠁                                                 
+  20               ⡠⠔⠒⠊⠉                                                        
+                  ⡔⠁                                                            
+                ⢀⠎                                                              
+               ⢠⠊                                                               
+  13          ⡰⠁                                                                
+            ⢀⠜                                                                  
+           ⢀⠎                                                                   
+   7      ⡠⠃                                                                    
+         ⡔⠁                                                                     
+       ⢀⠎                                                                       
+      ⢠⠊                                                                        
+   0 ⡰⠁                                                                         
+                    1              2              3              4              
+                        [tab] change/restart   [esc] quit
