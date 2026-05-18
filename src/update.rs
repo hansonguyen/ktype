@@ -132,6 +132,13 @@ pub fn update(model: &mut Model, msg: Msg) -> Command {
                 return Command::None;
             }
             model.session.elapsed = elapsed;
+            // One snapshot per crossed second boundary
+            if elapsed.as_secs() as usize > model.session.wpm_history.len() {
+                let correct_words = metrics::count_correct_words(&model.session.words);
+                let wpm = metrics::wpm(correct_words, elapsed);
+                model.session.wpm_history.push(wpm);
+                model.session.error_history.push(model.session.total_errors);
+            }
             // Only expire in time mode; words mode tracks elapsed but has no deadline.
             if matches!(model.config.test_mode, TestMode::Time)
                 && elapsed >= model.config.time_limit
@@ -214,8 +221,7 @@ mod tests {
 
     use super::*;
     use crate::model::{
-        Config, DURATION_OPTIONS, Screen, SessionState, TestMode, TestStatus, WORD_COUNT_OPTIONS,
-        Word,
+        Config, Screen, SessionState, TestMode, TestStatus, WORD_COUNT_OPTIONS, Word,
     };
 
     fn model_with_words(words: &[&str]) -> Model {
@@ -680,6 +686,31 @@ mod tests {
         // total_chars_typed counts keystrokes (not current buffer length)
         assert_eq!(model.session.total_chars_typed, 2);
         assert_eq!(model.session.total_errors, 1); // error persists despite correction
+    }
+
+    #[test]
+    fn tick_snapshots_wpm_at_each_second_boundary() {
+        let mut model = model_with_words(&["hello", "world"]);
+        update(&mut model, Msg::Char('h')); // start running
+        // First second boundary
+        update(&mut model, Msg::Tick(Duration::from_secs(1)));
+        assert_eq!(model.session.wpm_history.len(), 1);
+        // Mid-second: no new snapshot
+        update(&mut model, Msg::Tick(Duration::from_millis(1500)));
+        assert_eq!(model.session.wpm_history.len(), 1);
+        // Second boundary
+        update(&mut model, Msg::Tick(Duration::from_secs(2)));
+        assert_eq!(model.session.wpm_history.len(), 2);
+    }
+
+    #[test]
+    fn tick_snapshot_records_cumulative_error_count() {
+        let mut model = model_with_words(&["hello"]);
+        update(&mut model, Msg::Char('x')); // wrong — total_errors becomes 1
+        model.session.status = TestStatus::Running;
+        model.session.total_errors = 3; // set directly to test recording
+        update(&mut model, Msg::Tick(Duration::from_secs(1)));
+        assert_eq!(model.session.error_history, vec![3]);
     }
 }
 
