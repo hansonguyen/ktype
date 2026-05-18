@@ -60,10 +60,12 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
     // timer_start is infrastructure — not app state. Owned here alongside rng.
     let mut timer_start: Option<Instant> = None;
 
-    let word_count = model.config.word_count;
+    let initial_count = model.config.initial_word_count();
     execute_command(
         &mut model,
-        Command::GenerateWords { count: word_count },
+        Command::GenerateWords {
+            count: initial_count,
+        },
         &mut rng,
     );
 

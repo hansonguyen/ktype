@@ -2,7 +2,7 @@ use std::time::Duration;
 
 use crate::commands::{Command, StatsPayload};
 use crate::metrics;
-use crate::model::{DURATION_OPTIONS, Model, Screen, TestStatus};
+use crate::model::{DURATION_OPTIONS, Model, Screen, TestMode, TestStatus, WORD_COUNT_OPTIONS};
 use crate::msg::Msg;
 
 fn build_stats_payload(model: &Model) -> StatsPayload {
@@ -10,8 +10,12 @@ fn build_stats_payload(model: &Model) -> StatsPayload {
     let committed_words = metrics::count_committed_words(&model.session.words);
     let correct_chars = metrics::count_correct_chars(&model.session.words);
     let total_chars = metrics::count_total_chars_typed(&model.session.words);
+    let duration_secs = match model.config.test_mode {
+        TestMode::Time => DURATION_OPTIONS[model.config.selected_duration_idx],
+        TestMode::Words => model.session.elapsed.as_secs(),
+    };
     StatsPayload {
-        duration_secs: DURATION_OPTIONS[model.config.selected_duration_idx],
+        duration_secs,
         wpm: metrics::wpm(correct_words, model.session.elapsed),
         raw_wpm: metrics::raw_wpm(committed_words, model.session.elapsed),
         accuracy: metrics::accuracy(correct_chars, total_chars),
@@ -25,38 +29,45 @@ pub fn update(model: &mut Model, msg: Msg) -> Command {
         }
 
         Msg::Tab => {
-            if model.session.status != TestStatus::Running {
-                let next_idx = (model.config.selected_duration_idx + 1) % DURATION_OPTIONS.len();
-                model.config.selected_duration_idx = next_idx;
-                model.config.time_limit = Duration::from_secs(DURATION_OPTIONS[next_idx]);
-            }
             model.screen = Screen::Typing;
             return Command::GenerateWords {
-                count: model.config.word_count,
+                count: model.config.initial_word_count(),
             };
         }
 
         Msg::Char(c) => {
-            let session = &mut model.session;
-            if session.words.is_empty() {
+            if model.session.words.is_empty() {
                 return Command::None;
             }
-            if session.status == TestStatus::Waiting {
-                session.status = TestStatus::Running;
+            if model.session.status == TestStatus::Waiting {
+                model.session.status = TestStatus::Running;
             }
-            let word = &mut session.words[session.current_word];
-            // Block input when the word is full — overtyping support is deferred to Phase 4.
-            if word.typed.len() < word.chars.len() {
-                word.typed.push(c);
+            {
+                let word = &mut model.session.words[model.session.current_word];
+                if word.typed.len() < word.chars.len() {
+                    word.typed.push(c);
+                }
             }
-            let is_last = session.current_word == session.words.len() - 1;
-            let word_full = session.words[session.current_word].typed.len()
-                == session.words[session.current_word].chars.len();
+
+            let is_last = model.session.current_word == model.session.words.len() - 1;
+            let word_full = model.session.words[model.session.current_word].typed.len()
+                == model.session.words[model.session.current_word].chars.len();
+
             if is_last && word_full {
-                session.words[session.current_word].committed = true;
-                session.status = TestStatus::Done;
-                model.screen = Screen::Done;
-                return Command::SaveStats(build_stats_payload(model));
+                match model.config.test_mode {
+                    TestMode::Words => {
+                        model.session.words[model.session.current_word].committed = true;
+                        model.session.status = TestStatus::Done;
+                        model.screen = Screen::Done;
+                        return Command::SaveStats(build_stats_payload(model));
+                    }
+                    TestMode::Time => {
+                        // Commit but defer advance — execute_command will advance
+                        // after appending so current_word is never out of bounds.
+                        model.session.words[model.session.current_word].committed = true;
+                        return Command::AppendWords { count: 1 };
+                    }
+                }
             }
         }
 
@@ -74,19 +85,34 @@ pub fn update(model: &mut Model, msg: Msg) -> Command {
         }
 
         Msg::Space => {
-            let session = &mut model.session;
-            if session.words.is_empty() || session.words[session.current_word].typed.is_empty() {
+            if model.session.words.is_empty()
+                || model.session.words[model.session.current_word]
+                    .typed
+                    .is_empty()
+                || model.session.words[model.session.current_word].committed
+            {
                 return Command::None;
             }
-            let is_last = session.current_word == session.words.len() - 1;
-            session.words[session.current_word].committed = true;
+            let is_last = model.session.current_word == model.session.words.len() - 1;
+            model.session.words[model.session.current_word].committed = true;
 
             if is_last {
-                session.status = TestStatus::Done;
-                model.screen = Screen::Done;
-                return Command::SaveStats(build_stats_payload(model));
+                match model.config.test_mode {
+                    TestMode::Words => {
+                        model.session.status = TestStatus::Done;
+                        model.screen = Screen::Done;
+                        return Command::SaveStats(build_stats_payload(model));
+                    }
+                    TestMode::Time => {
+                        // Defer advance — execute_command advances after appending.
+                        return Command::AppendWords { count: 1 };
+                    }
+                }
             } else {
-                session.current_word += 1;
+                model.session.current_word += 1;
+                if matches!(model.config.test_mode, TestMode::Time) {
+                    return Command::AppendWords { count: 1 };
+                }
             }
         }
 
@@ -95,11 +121,76 @@ pub fn update(model: &mut Model, msg: Msg) -> Command {
                 return Command::None;
             }
             model.session.elapsed = elapsed;
-            if elapsed >= model.config.time_limit {
+            // Only expire in time mode; words mode tracks elapsed but has no deadline.
+            if matches!(model.config.test_mode, TestMode::Time)
+                && elapsed >= model.config.time_limit
+            {
                 model.session.status = TestStatus::Done;
                 model.screen = Screen::Done;
                 return Command::SaveStats(build_stats_payload(model));
             }
+        }
+
+        Msg::ShiftTab => {
+            if model.session.status == TestStatus::Running {
+                return Command::None;
+            }
+            model.config.test_mode = match model.config.test_mode {
+                TestMode::Time => TestMode::Words,
+                TestMode::Words => TestMode::Time,
+            };
+            model.screen = Screen::Typing;
+            return Command::GenerateWords {
+                count: model.config.initial_word_count(),
+            };
+        }
+
+        Msg::Right => {
+            if model.session.status == TestStatus::Running {
+                return Command::None;
+            }
+            match model.config.test_mode {
+                TestMode::Time => {
+                    let next = (model.config.selected_duration_idx + 1) % DURATION_OPTIONS.len();
+                    model.config.selected_duration_idx = next;
+                    model.config.time_limit = Duration::from_secs(DURATION_OPTIONS[next]);
+                }
+                TestMode::Words => {
+                    let next =
+                        (model.config.selected_word_count_idx + 1) % WORD_COUNT_OPTIONS.len();
+                    model.config.selected_word_count_idx = next;
+                    model.config.word_count = WORD_COUNT_OPTIONS[next];
+                }
+            }
+            model.screen = Screen::Typing;
+            return Command::GenerateWords {
+                count: model.config.initial_word_count(),
+            };
+        }
+
+        Msg::Left => {
+            if model.session.status == TestStatus::Running {
+                return Command::None;
+            }
+            match model.config.test_mode {
+                TestMode::Time => {
+                    let prev = (model.config.selected_duration_idx + DURATION_OPTIONS.len() - 1)
+                        % DURATION_OPTIONS.len();
+                    model.config.selected_duration_idx = prev;
+                    model.config.time_limit = Duration::from_secs(DURATION_OPTIONS[prev]);
+                }
+                TestMode::Words => {
+                    let prev = (model.config.selected_word_count_idx + WORD_COUNT_OPTIONS.len()
+                        - 1)
+                        % WORD_COUNT_OPTIONS.len();
+                    model.config.selected_word_count_idx = prev;
+                    model.config.word_count = WORD_COUNT_OPTIONS[prev];
+                }
+            }
+            model.screen = Screen::Typing;
+            return Command::GenerateWords {
+                count: model.config.initial_word_count(),
+            };
         }
     }
 
@@ -111,7 +202,10 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::model::{Config, SessionState, Word};
+    use crate::model::{
+        Config, DURATION_OPTIONS, Screen, SessionState, TestMode, TestStatus, WORD_COUNT_OPTIONS,
+        Word,
+    };
 
     fn model_with_words(words: &[&str]) -> Model {
         Model {
@@ -196,6 +290,7 @@ mod tests {
     #[test]
     fn space_on_last_word_sets_done() {
         let mut model = model_with_words(&["hi"]);
+        model.config.test_mode = TestMode::Words;
         update(&mut model, Msg::Char('h'));
         update(&mut model, Msg::Space);
         assert_eq!(model.session.status, TestStatus::Done);
@@ -205,6 +300,7 @@ mod tests {
     #[test]
     fn last_char_of_last_word_auto_ends_test() {
         let mut model = model_with_words(&["hi"]);
+        model.config.test_mode = TestMode::Words;
         update(&mut model, Msg::Char('h'));
         assert_eq!(model.session.status, TestStatus::Running);
         update(&mut model, Msg::Char('i'));
@@ -216,6 +312,7 @@ mod tests {
     #[test]
     fn last_char_of_last_word_returns_save_stats_command() {
         let mut model = model_with_words(&["hi"]);
+        model.config.test_mode = TestMode::Words;
         update(&mut model, Msg::Char('h'));
         let cmd = update(&mut model, Msg::Char('i'));
         assert!(matches!(cmd, Command::SaveStats(_)));
@@ -224,6 +321,7 @@ mod tests {
     #[test]
     fn last_char_on_multi_word_test_auto_ends() {
         let mut model = model_with_words(&["go", "hi"]);
+        model.config.test_mode = TestMode::Words;
         update(&mut model, Msg::Char('g'));
         update(&mut model, Msg::Space); // commit first word, advance
         update(&mut model, Msg::Char('h'));
@@ -258,29 +356,6 @@ mod tests {
     }
 
     #[test]
-    fn tab_while_waiting_cycles_to_next_duration() {
-        let mut model = model_with_words(&["hello"]);
-        assert_eq!(model.session.status, TestStatus::Waiting);
-        update(&mut model, Msg::Tab);
-        assert_eq!(model.config.selected_duration_idx, 1);
-        assert_eq!(model.config.time_limit, Duration::from_secs(30));
-    }
-
-    #[test]
-    fn tab_cycles_through_all_durations() {
-        // Note: in unit tests Command::GenerateWords is not executed,
-        // so session.status stays Waiting across all three Tab calls.
-        let mut model = model_with_words(&["hello"]);
-        update(&mut model, Msg::Tab); // 0 → 1 (30s)
-        assert_eq!(model.config.selected_duration_idx, 1);
-        update(&mut model, Msg::Tab); // 1 → 2 (60s)
-        assert_eq!(model.config.selected_duration_idx, 2);
-        update(&mut model, Msg::Tab); // 2 → 0 (15s, wraps)
-        assert_eq!(model.config.selected_duration_idx, 0);
-        assert_eq!(model.config.time_limit, Duration::from_secs(15));
-    }
-
-    #[test]
     fn tab_while_running_does_not_cycle() {
         let mut model = model_with_words(&["hello"]);
         update(&mut model, Msg::Char('h')); // transitions status to Running
@@ -288,17 +363,6 @@ mod tests {
         update(&mut model, Msg::Tab);
         assert_eq!(model.config.selected_duration_idx, 0);
         assert_eq!(model.config.time_limit, Duration::from_secs(15));
-    }
-
-    #[test]
-    fn tab_while_done_cycles_duration() {
-        let mut model = model_with_words(&["hi"]);
-        update(&mut model, Msg::Char('h'));
-        update(&mut model, Msg::Space); // transitions to Done
-        assert_eq!(model.screen, Screen::Done);
-        update(&mut model, Msg::Tab);
-        assert_eq!(model.config.selected_duration_idx, 1);
-        assert_eq!(model.config.time_limit, Duration::from_secs(30));
     }
 
     #[test]
@@ -340,6 +404,7 @@ mod tests {
     #[test]
     fn tick_after_done_is_noop() {
         let mut model = model_with_words(&["hi"]);
+        model.config.test_mode = TestMode::Words;
         update(&mut model, Msg::Char('h'));
         update(&mut model, Msg::Space);
         assert_eq!(model.screen, Screen::Done);
@@ -352,6 +417,7 @@ mod tests {
     #[test]
     fn space_on_last_word_returns_save_stats_command() {
         let mut model = model_with_words(&["hi"]);
+        model.config.test_mode = TestMode::Words;
         update(&mut model, Msg::Char('h'));
         let cmd = update(&mut model, Msg::Space);
         assert!(matches!(cmd, Command::SaveStats(_)));
@@ -363,6 +429,219 @@ mod tests {
         update(&mut model, Msg::Char('h'));
         let cmd = update(&mut model, Msg::Tick(Duration::from_secs(15)));
         assert!(matches!(cmd, Command::SaveStats(_)));
+    }
+
+    #[test]
+    fn right_cycles_duration_forward() {
+        let mut model = model_with_words(&["hello"]);
+        assert_eq!(model.session.status, TestStatus::Waiting);
+        update(&mut model, Msg::Right);
+        assert_eq!(model.config.selected_duration_idx, 1);
+        assert_eq!(model.config.time_limit, Duration::from_secs(30));
+    }
+
+    #[test]
+    fn right_cycles_duration_wraps() {
+        let mut model = model_with_words(&["hello"]);
+        update(&mut model, Msg::Right); // 0 → 1
+        update(&mut model, Msg::Right); // 1 → 2
+        update(&mut model, Msg::Right); // 2 → 0
+        assert_eq!(model.config.selected_duration_idx, 0);
+        assert_eq!(model.config.time_limit, Duration::from_secs(15));
+    }
+
+    #[test]
+    fn left_cycles_duration_backward() {
+        let mut model = model_with_words(&["hello"]);
+        update(&mut model, Msg::Left); // 0 → 2 (wraps)
+        assert_eq!(model.config.selected_duration_idx, 2);
+        assert_eq!(model.config.time_limit, Duration::from_secs(60));
+    }
+
+    #[test]
+    fn right_cycles_word_count_in_words_mode() {
+        let mut model = model_with_words(&["hello"]);
+        model.config.test_mode = TestMode::Words;
+        update(&mut model, Msg::Right); // idx 1 (25) → idx 2 (50)
+        assert_eq!(model.config.selected_word_count_idx, 2);
+        assert_eq!(model.config.word_count, WORD_COUNT_OPTIONS[2]);
+    }
+
+    #[test]
+    fn left_cycles_word_count_in_words_mode() {
+        let mut model = model_with_words(&["hello"]);
+        model.config.test_mode = TestMode::Words;
+        update(&mut model, Msg::Left); // idx 1 (25) → idx 0 (10)
+        assert_eq!(model.config.selected_word_count_idx, 0);
+        assert_eq!(model.config.word_count, WORD_COUNT_OPTIONS[0]);
+    }
+
+    #[test]
+    fn right_while_running_is_noop() {
+        let mut model = model_with_words(&["hello"]);
+        update(&mut model, Msg::Char('h')); // → Running
+        assert_eq!(model.session.status, TestStatus::Running);
+        let idx_before = model.config.selected_duration_idx;
+        update(&mut model, Msg::Right);
+        assert_eq!(model.config.selected_duration_idx, idx_before);
+    }
+
+    #[test]
+    fn left_while_running_is_noop() {
+        let mut model = model_with_words(&["hello"]);
+        update(&mut model, Msg::Char('h'));
+        let idx_before = model.config.selected_duration_idx;
+        update(&mut model, Msg::Left);
+        assert_eq!(model.config.selected_duration_idx, idx_before);
+    }
+
+    #[test]
+    fn right_returns_generate_words_command() {
+        let mut model = model_with_words(&["hello"]);
+        let cmd = update(&mut model, Msg::Right);
+        assert!(matches!(cmd, Command::GenerateWords { .. }));
+    }
+
+    #[test]
+    fn tab_no_longer_cycles_duration() {
+        let mut model = model_with_words(&["hello"]);
+        update(&mut model, Msg::Tab);
+        // Tab is restart-only now — selected_duration_idx must not change
+        assert_eq!(model.config.selected_duration_idx, 0);
+    }
+
+    #[test]
+    fn shifttab_toggles_from_time_to_words() {
+        let mut model = model_with_words(&["hello"]);
+        assert_eq!(model.config.test_mode, TestMode::Time);
+        update(&mut model, Msg::ShiftTab);
+        assert_eq!(model.config.test_mode, TestMode::Words);
+    }
+
+    #[test]
+    fn shifttab_toggles_from_words_to_time() {
+        let mut model = model_with_words(&["hello"]);
+        model.config.test_mode = TestMode::Words;
+        update(&mut model, Msg::ShiftTab);
+        assert_eq!(model.config.test_mode, TestMode::Time);
+    }
+
+    #[test]
+    fn shifttab_while_running_is_noop() {
+        let mut model = model_with_words(&["hello"]);
+        update(&mut model, Msg::Char('h'));
+        assert_eq!(model.session.status, TestStatus::Running);
+        update(&mut model, Msg::ShiftTab);
+        assert_eq!(model.config.test_mode, TestMode::Time); // unchanged
+    }
+
+    #[test]
+    fn shifttab_returns_generate_words_command() {
+        let mut model = model_with_words(&["hello"]);
+        let cmd = update(&mut model, Msg::ShiftTab);
+        assert!(matches!(cmd, Command::GenerateWords { .. }));
+    }
+
+    #[test]
+    fn time_mode_last_char_appends_not_ends() {
+        // In time mode, completing the last word should NOT end the test.
+        // It should return AppendWords.
+        let mut model = model_with_words(&["hi"]);
+        // model_with_words uses Config::default() which is TestMode::Time
+        assert_eq!(model.config.test_mode, TestMode::Time);
+        update(&mut model, Msg::Char('h'));
+        let cmd = update(&mut model, Msg::Char('i')); // last char of last word
+        assert!(matches!(cmd, Command::AppendWords { count: 1 }));
+        // Test must NOT be done
+        assert_eq!(model.session.status, TestStatus::Running);
+        assert_eq!(model.screen, Screen::Typing);
+    }
+
+    #[test]
+    fn time_mode_space_on_last_word_appends_not_ends() {
+        let mut model = model_with_words(&["hi"]);
+        assert_eq!(model.config.test_mode, TestMode::Time);
+        update(&mut model, Msg::Char('h'));
+        let cmd = update(&mut model, Msg::Space);
+        assert!(matches!(cmd, Command::AppendWords { count: 1 }));
+        assert_eq!(model.session.status, TestStatus::Running);
+    }
+
+    #[test]
+    fn time_mode_non_last_space_appends_word() {
+        let mut model = model_with_words(&["hi", "ok"]);
+        assert_eq!(model.config.test_mode, TestMode::Time);
+        update(&mut model, Msg::Char('h'));
+        let cmd = update(&mut model, Msg::Space); // non-last word
+        assert!(matches!(cmd, Command::AppendWords { count: 1 }));
+        assert_eq!(model.session.current_word, 1); // advanced immediately
+    }
+
+    #[test]
+    fn time_mode_current_word_stays_in_bounds_after_last_word_commit() {
+        // After last word commit (no execute_command), current_word must remain valid.
+        let mut model = model_with_words(&["hi"]);
+        update(&mut model, Msg::Char('h'));
+        update(&mut model, Msg::Char('i')); // commits last word, defers advance
+        // current_word == 0, words.len() == 1 — still valid
+        assert!(model.session.current_word < model.session.words.len());
+    }
+
+    #[test]
+    fn words_mode_last_char_ends_test() {
+        let mut model = model_with_words(&["hi"]);
+        model.config.test_mode = TestMode::Words;
+        update(&mut model, Msg::Char('h'));
+        let cmd = update(&mut model, Msg::Char('i'));
+        assert_eq!(model.session.status, TestStatus::Done);
+        assert_eq!(model.screen, Screen::Done);
+        assert!(matches!(cmd, Command::SaveStats(_)));
+    }
+
+    #[test]
+    fn words_mode_space_on_last_word_ends_test() {
+        let mut model = model_with_words(&["hi"]);
+        model.config.test_mode = TestMode::Words;
+        update(&mut model, Msg::Char('h'));
+        let cmd = update(&mut model, Msg::Space);
+        assert_eq!(model.session.status, TestStatus::Done);
+        assert!(matches!(cmd, Command::SaveStats(_)));
+    }
+
+    #[test]
+    fn words_mode_tick_does_not_expire_test() {
+        let mut model = model_with_words(&["hello"]);
+        model.config.test_mode = TestMode::Words;
+        update(&mut model, Msg::Char('h')); // → Running
+        // Fire a tick well past the default time_limit
+        update(&mut model, Msg::Tick(Duration::from_secs(999)));
+        assert_eq!(model.session.status, TestStatus::Running);
+        assert_eq!(model.screen, Screen::Typing);
+    }
+
+    #[test]
+    fn words_mode_tick_still_updates_elapsed() {
+        let mut model = model_with_words(&["hello"]);
+        model.config.test_mode = TestMode::Words;
+        update(&mut model, Msg::Char('h'));
+        update(&mut model, Msg::Tick(Duration::from_secs(5)));
+        assert_eq!(model.session.elapsed, Duration::from_secs(5));
+    }
+
+    #[test]
+    fn words_mode_stats_payload_uses_elapsed() {
+        let mut model = model_with_words(&["hi"]);
+        model.config.test_mode = TestMode::Words;
+        model.session.elapsed = Duration::from_secs(7);
+        update(&mut model, Msg::Char('h'));
+        // Manually set elapsed (Tick would update it but we want precise control)
+        model.session.elapsed = Duration::from_secs(7);
+        let cmd = update(&mut model, Msg::Space); // ends test
+        if let Command::SaveStats(payload) = cmd {
+            assert_eq!(payload.duration_secs, 7);
+        } else {
+            panic!("expected SaveStats");
+        }
     }
 }
 

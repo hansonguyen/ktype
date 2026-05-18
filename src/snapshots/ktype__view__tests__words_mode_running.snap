@@ -1,5 +1,6 @@
 ---
 source: src/view.rs
+assertion_line: 517
 expression: output
 ---
                                                                                 
@@ -10,11 +11,11 @@ expression: output
                                                                                 
                                                                                 
                                                                                 
-                           [time] words   [15]  30  60                          
                                                                                 
-                                      kern                                      
+kern  time [words]   10  [25]  50  100   2/4   [tab] restart                    
                                                                                 
-                           wpm       raw wpm        acc                         
-                             12          18         85%                         
+the quick brown fox                                                             
                                                                                 
-                        [tab] change/restart   [esc] quit
+                                                                                
+                                                                                
+[esc] quit

@@ -19,17 +19,25 @@ pub struct StatsPayload {
 pub enum Command {
     None,
     GenerateWords { count: usize },
+    AppendWords { count: usize },
     SaveStats(StatsPayload),
 }
 
-// The only place side effects happen. update() returns a Command; main.rs calls this.
-// rng lives in main.rs (seeded once at startup) and is passed in here — it is
-// infrastructure, not app state.
 pub fn execute_command(model: &mut Model, cmd: Command, rng: &mut SmallRng) {
     match cmd {
         Command::None => {}
         Command::GenerateWords { count } => {
             model.session = SessionState::new(generator::generate(count, rng));
+        }
+        Command::AppendWords { count } => {
+            model.session.words.extend(generator::generate(count, rng));
+            // Advance to the newly appended word if the current word is committed.
+            // This handles the last-word case where update deferred the advance.
+            if model.session.current_word + 1 < model.session.words.len()
+                && model.session.words[model.session.current_word].committed
+            {
+                model.session.current_word += 1;
+            }
         }
         Command::SaveStats(payload) => {
             let timestamp = SystemTime::now()

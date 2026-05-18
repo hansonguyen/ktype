@@ -11,7 +11,7 @@ expression: render_with_duration(2)
                                                                                 
                                                                                 
                                                                                 
-kern  15  30  [60]  [tab] restart                                               
+kern  [time] words   15  30  [60]   [←→] cycle  [tab] restart  [shift+tab] → wor
                                                                                 
 the quick brown                                                                 
                                                                                 

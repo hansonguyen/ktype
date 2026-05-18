@@ -8,7 +8,9 @@ use ratatui::{
 
 use crate::input::{CharState, char_state};
 use crate::metrics;
-use crate::model::{CursorStyle, DURATION_OPTIONS, Model, Screen, TestStatus};
+use crate::model::{
+    CursorStyle, DURATION_OPTIONS, Model, Screen, TestMode, TestStatus, WORD_COUNT_OPTIONS,
+};
 
 pub fn view(model: &Model, frame: &mut Frame) {
     match model.screen {
@@ -47,12 +49,21 @@ fn render_results(model: &Model, frame: &mut Frame) {
     ])
     .split(area);
 
-    frame.render_widget(
-        Paragraph::new(Line::from(duration_strip_spans(
+    let mut result_header: Vec<Span> = Vec::new();
+    result_header.extend(mode_selector_spans(&model.config.test_mode, false));
+    result_header.push(Span::raw("   "));
+    match model.config.test_mode {
+        TestMode::Time => result_header.extend(duration_strip_spans(
             model.config.selected_duration_idx,
             false,
-        )))
-        .alignment(Alignment::Center),
+        )),
+        TestMode::Words => result_header.extend(word_count_strip_spans(
+            model.config.selected_word_count_idx,
+            false,
+        )),
+    }
+    frame.render_widget(
+        Paragraph::new(Line::from(result_header)).alignment(Alignment::Center),
         vertical[1],
     );
 
@@ -97,25 +108,60 @@ fn render_results(model: &Model, frame: &mut Frame) {
     );
 }
 
-fn duration_strip_spans<'a>(selected_idx: usize, dimmed: bool) -> Vec<Span<'a>> {
+fn options_strip_spans(
+    labels: Vec<String>,
+    selected_idx: usize,
+    dimmed: bool,
+) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
-    for (i, &secs) in DURATION_OPTIONS.iter().enumerate() {
+    for (i, label) in labels.into_iter().enumerate() {
         if i > 0 {
             spans.push(Span::raw("  "));
         }
-        let label = if i == selected_idx {
-            format!("[{}]", secs)
+        let display = if i == selected_idx {
+            format!("[{}]", label)
         } else {
-            secs.to_string()
+            label
         };
         let style = if i == selected_idx && !dimmed {
             Style::new().add_modifier(Modifier::BOLD)
         } else {
             Style::new().dim()
         };
-        spans.push(Span::styled(label, style));
+        spans.push(Span::styled(display, style));
     }
     spans
+}
+
+fn duration_strip_spans(selected_idx: usize, dimmed: bool) -> Vec<Span<'static>> {
+    let labels = DURATION_OPTIONS.iter().map(|s| s.to_string()).collect();
+    options_strip_spans(labels, selected_idx, dimmed)
+}
+
+fn word_count_strip_spans(selected_idx: usize, dimmed: bool) -> Vec<Span<'static>> {
+    let labels = WORD_COUNT_OPTIONS.iter().map(|s| s.to_string()).collect();
+    options_strip_spans(labels, selected_idx, dimmed)
+}
+
+fn mode_selector_spans(mode: &TestMode, is_running: bool) -> Vec<Span<'static>> {
+    let selected_style = if is_running {
+        Style::new().dim()
+    } else {
+        Style::new().add_modifier(Modifier::BOLD)
+    };
+    let unselected_style = Style::new().dim();
+    match mode {
+        TestMode::Time => vec![
+            Span::styled("[time]", selected_style),
+            Span::raw(" "),
+            Span::styled("words", unselected_style),
+        ],
+        TestMode::Words => vec![
+            Span::styled("time", unselected_style),
+            Span::raw(" "),
+            Span::styled("[words]", selected_style),
+        ],
+    }
 }
 
 fn render_typing(model: &Model, frame: &mut Frame) {
@@ -144,29 +190,70 @@ fn render_typing(model: &Model, frame: &mut Frame) {
     let words_area = vertical[3];
     let footer_area = vertical[5];
 
-    // Header: duration strip always visible; countdown appended only while Running.
     let is_running = model.session.status == TestStatus::Running;
     let mut header_spans: Vec<Span> = vec![
         Span::styled("kern", Style::new().add_modifier(Modifier::BOLD)),
         Span::raw("  "),
     ];
-    header_spans.extend(duration_strip_spans(
-        model.config.selected_duration_idx,
-        is_running,
-    ));
-    if is_running {
-        let countdown = model
-            .config
-            .time_limit
-            .saturating_sub(model.session.elapsed);
-        header_spans.push(Span::raw("  ·  "));
-        header_spans.push(Span::styled(
-            format!("{}s", countdown.as_secs()),
-            Style::new().dim(),
-        ));
+
+    // Mode selector
+    header_spans.extend(mode_selector_spans(&model.config.test_mode, is_running));
+    header_spans.push(Span::raw("   "));
+
+    // Options strip
+    match model.config.test_mode {
+        TestMode::Time => header_spans.extend(duration_strip_spans(
+            model.config.selected_duration_idx,
+            is_running,
+        )),
+        TestMode::Words => header_spans.extend(word_count_strip_spans(
+            model.config.selected_word_count_idx,
+            is_running,
+        )),
     }
-    header_spans.push(Span::raw("  "));
+
+    // Context info (countdown or word counter)
+    if is_running {
+        match model.config.test_mode {
+            TestMode::Time => {
+                let countdown = model
+                    .config
+                    .time_limit
+                    .saturating_sub(model.session.elapsed);
+                header_spans.push(Span::raw("  ·  "));
+                header_spans.push(Span::styled(
+                    format!("{}s", countdown.as_secs()),
+                    Style::new().dim(),
+                ));
+            }
+            TestMode::Words => {
+                let total = model.session.words.len();
+                let current = (model.session.current_word + 1).min(total);
+                header_spans.push(Span::raw("   "));
+                header_spans.push(Span::styled(
+                    format!("{}/{}", current, total),
+                    Style::new().add_modifier(Modifier::BOLD),
+                ));
+            }
+        }
+    }
+
+    // Key hints
+    header_spans.push(Span::raw("   "));
+    if !is_running {
+        header_spans.push(Span::styled("[←→] cycle", Style::new().dim()));
+        header_spans.push(Span::raw("  "));
+    }
     header_spans.push(Span::styled("[tab] restart", Style::new().dim()));
+    if !is_running {
+        header_spans.push(Span::raw("  "));
+        let mode_hint = match model.config.test_mode {
+            TestMode::Time => "[shift+tab] → word mode",
+            TestMode::Words => "[shift+tab] → time mode",
+        };
+        header_spans.push(Span::styled(mode_hint, Style::new().dim()));
+    }
+
     let header = Paragraph::new(Line::from(header_spans));
     frame.render_widget(header, header_area);
 
@@ -214,9 +301,9 @@ fn build_word_lines<'a>(model: &Model, width: u16) -> Vec<Line<'a>> {
     let line_indices = word_line_indices(words, width);
     let current_word = model.session.current_word.min(words.len() - 1);
     let current_line = line_indices[current_word];
-    // Once the cursor reaches line 2, scroll so it stays at the bottom of the 3-line
-    // window. For lines 0 and 1 no scroll occurs, showing context ahead of the cursor.
-    let scroll = current_line.saturating_sub(2);
+    // Scroll once the cursor reaches line 2 (0-indexed), keeping the cursor on the
+    // second visible line so the user never types on line 3 and always reads ahead.
+    let scroll = current_line.saturating_sub(1);
 
     let total_lines = line_indices.last().copied().unwrap_or(0) + 1;
     let mut all_lines: Vec<Vec<Span<'a>>> = vec![Vec::new(); total_lines];
@@ -404,5 +491,29 @@ mod tests {
         insta::assert_snapshot!("duration_15s", render_with_duration(0));
         insta::assert_snapshot!("duration_30s", render_with_duration(1));
         insta::assert_snapshot!("duration_60s", render_with_duration(2));
+    }
+
+    #[test]
+    fn words_mode_waiting_snapshot() {
+        let mut model = test_model(&["the", "quick", "brown", "fox"], 0, &[]);
+        model.session.status = crate::model::TestStatus::Waiting;
+        model.config.test_mode = crate::model::TestMode::Words;
+        model.config.selected_word_count_idx = 1; // 25
+        model.config.word_count = crate::model::WORD_COUNT_OPTIONS[1];
+        let output = render_to_string(&model, 80, 24);
+        insta::assert_snapshot!("words_mode_waiting", output);
+    }
+
+    #[test]
+    fn words_mode_running_snapshot() {
+        let model = {
+            let mut m = test_model(&["the", "quick", "brown", "fox"], 1, &["the", "qu"]);
+            m.config.test_mode = crate::model::TestMode::Words;
+            m.config.selected_word_count_idx = 1;
+            m.config.word_count = crate::model::WORD_COUNT_OPTIONS[1];
+            m
+        };
+        let output = render_to_string(&model, 80, 24);
+        insta::assert_snapshot!("words_mode_running", output);
     }
 }

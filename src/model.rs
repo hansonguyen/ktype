@@ -3,6 +3,13 @@ use std::time::Duration;
 use crate::stats::SessionResult;
 
 pub const DURATION_OPTIONS: [u64; 3] = [15, 30, 60];
+pub const WORD_COUNT_OPTIONS: [usize; 4] = [10, 25, 50, 100];
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum TestMode {
+    Time,
+    Words,
+}
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Screen {
@@ -13,18 +20,16 @@ pub enum Screen {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum TestStatus {
-    Waiting, // words shown, nothing typed yet
-    Running, // first keypress received
-    Done,    // last word committed via Space
+    Waiting,
+    Running,
+    Done,
 }
 
 #[derive(Debug, Clone)]
 pub struct Word {
-    pub chars: Vec<char>, // original characters from generator
-    // Raw typed input for this word. Capped at chars.len() — overtyping is not
-    // supported in Phase 2 but this String makes Phase 4 corrected-char tracking easy.
+    pub chars: Vec<char>,
     pub typed: String,
-    pub committed: bool, // true once Space commits this word
+    pub committed: bool,
 }
 
 impl Word {
@@ -39,31 +44,49 @@ impl Word {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum CursorStyle {
-    Block, // filled background / inverted colors (default)
+    Block,
     #[expect(dead_code)]
-    Underline, // not yet wired; Phase 6 polish
+    Underline,
 }
 
 #[derive(Debug, Clone)]
 pub struct Config {
-    pub word_count: usize,
+    pub test_mode: TestMode,
     pub cursor_style: CursorStyle,
+    // time mode
     pub time_limit: Duration,
-    // invariant: always a valid index into DURATION_OPTIONS; only mutated via modular arithmetic in update.rs
+    // invariant: always a valid index into DURATION_OPTIONS
     pub selected_duration_idx: usize,
+    // words mode
+    pub word_count: usize,
+    // invariant: always a valid index into WORD_COUNT_OPTIONS
+    pub selected_word_count_idx: usize,
     #[expect(dead_code)]
-    pub punctuation: bool, // stubbed; wired in Phase 3
+    pub punctuation: bool,
     #[expect(dead_code)]
-    pub numbers: bool, // stubbed; wired in Phase 3
+    pub numbers: bool,
+}
+
+impl Config {
+    /// Words to generate on test start. Time mode uses a fixed buffer that
+    /// grows dynamically; words mode uses the configured word count.
+    pub fn initial_word_count(&self) -> usize {
+        match self.test_mode {
+            TestMode::Time => 50,
+            TestMode::Words => self.word_count,
+        }
+    }
 }
 
 impl Default for Config {
     fn default() -> Self {
         Config {
-            word_count: 25,
+            test_mode: TestMode::Time,
             cursor_style: CursorStyle::Block,
             time_limit: Duration::from_secs(15),
             selected_duration_idx: 0,
+            word_count: WORD_COUNT_OPTIONS[1], // 25
+            selected_word_count_idx: 1,
             punctuation: false,
             numbers: false,
         }
@@ -98,8 +121,6 @@ pub struct Model {
 }
 
 impl Default for Model {
-    // Starts with an empty session; main.rs fires Command::GenerateWords immediately
-    // after construction to populate words before the first frame renders.
     fn default() -> Self {
         Model {
             screen: Screen::Typing,

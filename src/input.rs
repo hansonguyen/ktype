@@ -24,8 +24,6 @@ pub fn char_state(word: &Word, idx: usize) -> CharState {
     }
 }
 
-// Space and Enter both advance to the next word, matching Monkeytype's behaviour
-// where Enter is treated as an alternative word-commit key.
 pub fn event_to_msg(event: Event) -> Option<Msg> {
     match event {
         Event::Key(KeyEvent {
@@ -37,6 +35,9 @@ pub fn event_to_msg(event: Event) -> Option<Msg> {
             KeyCode::Char(c) => Some(Msg::Char(c)),
             KeyCode::Backspace => Some(Msg::Backspace),
             KeyCode::Tab => Some(Msg::Tab),
+            KeyCode::BackTab => Some(Msg::ShiftTab),
+            KeyCode::Left => Some(Msg::Left),
+            KeyCode::Right => Some(Msg::Right),
             KeyCode::Esc => Some(Msg::Esc),
             _ => None,
         },
@@ -140,5 +141,23 @@ mod tests {
     #[test]
     fn unknown_key_returns_none() {
         assert_eq!(event_to_msg(key_press(KeyCode::F(1))), None);
+    }
+
+    #[test]
+    fn shift_tab_maps_to_shifttab_msg() {
+        assert_eq!(
+            event_to_msg(key_press(KeyCode::BackTab)),
+            Some(Msg::ShiftTab)
+        );
+    }
+
+    #[test]
+    fn left_maps_to_left_msg() {
+        assert_eq!(event_to_msg(key_press(KeyCode::Left)), Some(Msg::Left));
+    }
+
+    #[test]
+    fn right_maps_to_right_msg() {
+        assert_eq!(event_to_msg(key_press(KeyCode::Right)), Some(Msg::Right));
     }
 }
