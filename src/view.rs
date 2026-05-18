@@ -27,13 +27,17 @@ fn render_results(model: &Model, frame: &mut Frame) {
 
     let correct_words = metrics::count_correct_words(&model.session.words);
     let committed_words = metrics::count_committed_words(&model.session.words);
-    let correct_chars = metrics::count_correct_chars(&model.session.words);
-    let total_chars = metrics::count_total_chars_typed(&model.session.words);
     let elapsed = model.session.elapsed;
 
     let wpm_val = metrics::wpm(correct_words, elapsed);
     let raw_val = metrics::raw_wpm(committed_words, elapsed);
-    let acc_val = metrics::accuracy(correct_chars, total_chars);
+    let acc_val = if model.session.total_chars_typed == 0 {
+        0.0
+    } else {
+        (model.session.total_chars_typed - model.session.total_errors) as f64
+            / model.session.total_chars_typed as f64
+            * 100.0
+    };
 
     let vertical = Layout::vertical([
         Constraint::Fill(1),

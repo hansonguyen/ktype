@@ -8,17 +8,22 @@ use crate::msg::Msg;
 fn build_stats_payload(model: &Model) -> StatsPayload {
     let correct_words = metrics::count_correct_words(&model.session.words);
     let committed_words = metrics::count_committed_words(&model.session.words);
-    let correct_chars = metrics::count_correct_chars(&model.session.words);
-    let total_chars = metrics::count_total_chars_typed(&model.session.words);
     let duration_secs = match model.config.test_mode {
         TestMode::Time => DURATION_OPTIONS[model.config.selected_duration_idx],
         TestMode::Words => model.session.elapsed.as_secs(),
+    };
+    let accuracy = if model.session.total_chars_typed == 0 {
+        0.0
+    } else {
+        (model.session.total_chars_typed - model.session.total_errors) as f64
+            / model.session.total_chars_typed as f64
+            * 100.0
     };
     StatsPayload {
         duration_secs,
         wpm: metrics::wpm(correct_words, model.session.elapsed),
         raw_wpm: metrics::raw_wpm(committed_words, model.session.elapsed),
-        accuracy: metrics::accuracy(correct_chars, total_chars),
+        accuracy,
     }
 }
 
@@ -701,6 +706,22 @@ mod tests {
         // Second boundary
         update(&mut model, Msg::Tick(Duration::from_secs(2)));
         assert_eq!(model.session.wpm_history.len(), 2);
+    }
+
+    #[test]
+    fn save_stats_accuracy_counts_corrected_errors() {
+        let mut model = model_with_words(&["hi"]);
+        model.config.test_mode = TestMode::Words;
+        update(&mut model, Msg::Char('x')); // wrong ('h' expected) → errors=1, typed=1
+        update(&mut model, Msg::Backspace);
+        update(&mut model, Msg::Char('h')); // correct → errors=1, typed=2
+        let cmd = update(&mut model, Msg::Space); // commit, last word → Done + SaveStats
+        // accuracy = (2 - 1) / 2 * 100 = 50.0
+        if let Command::SaveStats(payload) = cmd {
+            assert!((payload.accuracy - 50.0).abs() < 0.01);
+        } else {
+            panic!("expected SaveStats command");
+        }
     }
 
     #[test]
