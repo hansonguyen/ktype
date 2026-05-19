@@ -11,10 +11,7 @@ expression: output
                                                                                 
                                                                                 
                                                                                 
-ktype  time [words]   10  [25]  50  100   2/4   [tab] restart                   
                                                                                 
-the quick brown fox                                                             
+1/4                                                                             
                                                                                 
-                                                                                
-                                                                                
-[esc] quit
+the quick brown fox

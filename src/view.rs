@@ -60,17 +60,15 @@ fn render_results(model: &Model, frame: &mut Frame) {
 
     // Mode strip
     let mut result_header: Vec<Span> = Vec::new();
-    result_header.extend(mode_selector_spans(&model.config.test_mode, false));
+    result_header.extend(mode_selector_spans(&model.config.test_mode));
     result_header.push(Span::raw("   "));
     match model.config.test_mode {
-        TestMode::Time => result_header.extend(duration_strip_spans(
-            model.config.selected_duration_idx,
-            false,
-        )),
-        TestMode::Words => result_header.extend(word_count_strip_spans(
-            model.config.selected_word_count_idx,
-            false,
-        )),
+        TestMode::Time => {
+            result_header.extend(duration_strip_spans(model.config.selected_duration_idx))
+        }
+        TestMode::Words => {
+            result_header.extend(word_count_strip_spans(model.config.selected_word_count_idx))
+        }
     }
     frame.render_widget(
         Paragraph::new(Line::from(result_header)).alignment(Alignment::Center),
@@ -340,11 +338,7 @@ fn render_chart(model: &Model, frame: &mut Frame, area: Rect) {
     );
 }
 
-fn options_strip_spans(
-    labels: Vec<String>,
-    selected_idx: usize,
-    dimmed: bool,
-) -> Vec<Span<'static>> {
+fn options_strip_spans(labels: Vec<String>, selected_idx: usize) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
     for (i, label) in labels.into_iter().enumerate() {
         if i > 0 {
@@ -355,7 +349,7 @@ fn options_strip_spans(
         } else {
             label
         };
-        let style = if i == selected_idx && !dimmed {
+        let style = if i == selected_idx {
             Style::new().add_modifier(Modifier::BOLD)
         } else {
             Style::new().dim()
@@ -365,22 +359,18 @@ fn options_strip_spans(
     spans
 }
 
-fn duration_strip_spans(selected_idx: usize, dimmed: bool) -> Vec<Span<'static>> {
+fn duration_strip_spans(selected_idx: usize) -> Vec<Span<'static>> {
     let labels = DURATION_OPTIONS.iter().map(|s| s.to_string()).collect();
-    options_strip_spans(labels, selected_idx, dimmed)
+    options_strip_spans(labels, selected_idx)
 }
 
-fn word_count_strip_spans(selected_idx: usize, dimmed: bool) -> Vec<Span<'static>> {
+fn word_count_strip_spans(selected_idx: usize) -> Vec<Span<'static>> {
     let labels = WORD_COUNT_OPTIONS.iter().map(|s| s.to_string()).collect();
-    options_strip_spans(labels, selected_idx, dimmed)
+    options_strip_spans(labels, selected_idx)
 }
 
-fn mode_selector_spans(mode: &TestMode, is_running: bool) -> Vec<Span<'static>> {
-    let selected_style = if is_running {
-        Style::new().dim()
-    } else {
-        Style::new().add_modifier(Modifier::BOLD)
-    };
+fn mode_selector_spans(mode: &TestMode) -> Vec<Span<'static>> {
+    let selected_style = Style::new().add_modifier(Modifier::BOLD);
     let unselected_style = Style::new().dim();
     match mode {
         TestMode::Time => vec![
@@ -398,6 +388,7 @@ fn mode_selector_spans(mode: &TestMode, is_running: bool) -> Vec<Span<'static>> 
 
 fn render_typing(model: &Model, frame: &mut Frame) {
     let area = frame.area();
+    let is_running = model.session.status == TestStatus::Running;
 
     let horizontal = Layout::horizontal([
         Constraint::Fill(1),
@@ -407,6 +398,55 @@ fn render_typing(model: &Model, frame: &mut Frame) {
     .split(area);
     let content = horizontal[1];
 
+    if is_running {
+        render_typing_running(model, frame, content);
+    } else {
+        render_typing_idle(model, frame, content);
+    }
+}
+
+fn render_typing_running(model: &Model, frame: &mut Frame, content: Rect) {
+    let vertical = Layout::vertical([
+        Constraint::Fill(1),
+        Constraint::Length(1), // counter (countdown or word progress)
+        Constraint::Length(1), // spacer
+        Constraint::Length(3), // word block
+        Constraint::Fill(1),
+    ])
+    .split(content);
+
+    let counter_area = vertical[1];
+    let words_area = vertical[3];
+
+    let counter_text = match model.config.test_mode {
+        TestMode::Time => {
+            let remaining = model
+                .config
+                .time_limit
+                .saturating_sub(model.session.elapsed);
+            format!("{}", remaining.as_secs())
+        }
+        TestMode::Words => {
+            // current_word is 0-indexed; shows completed word count (0 at start,
+            // increments to 1 only after the first word is committed and space pressed)
+            let total = model.session.words.len();
+            format!("{}/{}", model.session.current_word, total)
+        }
+    };
+
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            counter_text,
+            Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+        )),
+        counter_area,
+    );
+
+    let word_lines = build_word_lines(model, words_area.width);
+    frame.render_widget(Paragraph::new(word_lines), words_area);
+}
+
+fn render_typing_idle(model: &Model, frame: &mut Frame, content: Rect) {
     let vertical = Layout::vertical([
         Constraint::Fill(1),
         Constraint::Length(1), // header
@@ -422,79 +462,40 @@ fn render_typing(model: &Model, frame: &mut Frame) {
     let words_area = vertical[3];
     let footer_area = vertical[5];
 
-    let is_running = model.session.status == TestStatus::Running;
     let mut header_spans: Vec<Span> = vec![
         Span::styled("ktype", Style::new().add_modifier(Modifier::BOLD)),
         Span::raw("  "),
     ];
-
-    // Mode selector
-    header_spans.extend(mode_selector_spans(&model.config.test_mode, is_running));
+    header_spans.extend(mode_selector_spans(&model.config.test_mode));
     header_spans.push(Span::raw("   "));
-
-    // Options strip
     match model.config.test_mode {
-        TestMode::Time => header_spans.extend(duration_strip_spans(
-            model.config.selected_duration_idx,
-            is_running,
-        )),
-        TestMode::Words => header_spans.extend(word_count_strip_spans(
-            model.config.selected_word_count_idx,
-            is_running,
-        )),
-    }
-
-    // Context info (countdown or word counter)
-    if is_running {
-        match model.config.test_mode {
-            TestMode::Time => {
-                let countdown = model
-                    .config
-                    .time_limit
-                    .saturating_sub(model.session.elapsed);
-                header_spans.push(Span::raw("  ·  "));
-                header_spans.push(Span::styled(
-                    format!("{}s", countdown.as_secs()),
-                    Style::new().dim(),
-                ));
-            }
-            TestMode::Words => {
-                let total = model.session.words.len();
-                let current = (model.session.current_word + 1).min(total);
-                header_spans.push(Span::raw("   "));
-                header_spans.push(Span::styled(
-                    format!("{}/{}", current, total),
-                    Style::new().add_modifier(Modifier::BOLD),
-                ));
-            }
+        TestMode::Time => {
+            header_spans.extend(duration_strip_spans(model.config.selected_duration_idx))
+        }
+        TestMode::Words => {
+            header_spans.extend(word_count_strip_spans(model.config.selected_word_count_idx))
         }
     }
-
-    // Key hints
     header_spans.push(Span::raw("   "));
-    if !is_running {
-        header_spans.push(Span::styled("[←→] cycle", Style::new().dim()));
-        header_spans.push(Span::raw("  "));
-    }
+    header_spans.push(Span::styled("[←→] cycle", Style::new().dim()));
+    header_spans.push(Span::raw("  "));
     header_spans.push(Span::styled("[tab] restart", Style::new().dim()));
-    if !is_running {
-        header_spans.push(Span::raw("  "));
-        let mode_hint = match model.config.test_mode {
-            TestMode::Time => "[shift+tab] → word mode",
-            TestMode::Words => "[shift+tab] → time mode",
-        };
-        header_spans.push(Span::styled(mode_hint, Style::new().dim()));
-    }
+    header_spans.push(Span::raw("  "));
+    let mode_hint = match model.config.test_mode {
+        TestMode::Time => "[shift+tab] → word mode",
+        TestMode::Words => "[shift+tab] → time mode",
+    };
+    header_spans.push(Span::styled(mode_hint, Style::new().dim()));
 
-    let header = Paragraph::new(Line::from(header_spans));
-    frame.render_widget(header, header_area);
+    frame.render_widget(Paragraph::new(Line::from(header_spans)), header_area);
 
     let word_lines = build_word_lines(model, words_area.width);
-    let words_widget = Paragraph::new(word_lines);
-    frame.render_widget(words_widget, words_area);
+    frame.render_widget(Paragraph::new(word_lines), words_area);
 
-    let footer = Paragraph::new(Span::styled("[esc] quit", Style::new().dim()));
-    frame.render_widget(footer, footer_area);
+    frame.render_widget(
+        Paragraph::new(Span::styled("[esc] quit", Style::new().dim())),
+        footer_area,
+    );
 }
 
 fn word_line_indices(words: &[crate::model::Word], width: u16) -> Vec<usize> {
@@ -755,6 +756,15 @@ mod tests {
         };
         let output = render_to_string(&model, 80, 24);
         insta::assert_snapshot!("words_mode_running", output);
+    }
+
+    #[test]
+    fn typing_screen_running_focus_mode_snapshot() {
+        // Running state: only counter + word block should appear; no header, no footer.
+        let model = test_model(&["the", "quick", "brown", "fox"], 1, &["the", "qu"]);
+        // test_model already sets status = Running
+        let output = render_to_string(&model, 80, 24);
+        insta::assert_snapshot!("running_focus_mode", output);
     }
 
     #[test]

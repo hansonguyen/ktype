@@ -11,10 +11,7 @@ expression: output
                                                                                 
                                                                                 
                                                                                 
-ktype  [time] words   [15]  30  60  ·  15s   [tab] restart                      
                                                                                 
-the quick brown                                                                 
+15                                                                              
                                                                                 
-                                                                                
-                                                                                
-[esc] quit
+the quick brown
