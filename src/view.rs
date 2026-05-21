@@ -24,6 +24,27 @@ pub fn view(model: &Model, frame: &mut Frame) {
         // Rendering one last frame is unnecessary and could cause flicker.
         Screen::Quitting => {}
     }
+
+    if model.screen == Screen::Typing
+        && model.session.status == TestStatus::Waiting
+        && let Some(version) = &model.pending_update
+    {
+        let area = frame.area();
+        let banner_area = Rect {
+            x: 0,
+            y: area.bottom().saturating_sub(1),
+            width: area.width,
+            height: 1,
+        };
+        frame.render_widget(
+            Paragraph::new(Span::styled(
+                format!("new version {version} available — cargo install ktype"),
+                Style::new().dim(),
+            ))
+            .alignment(Alignment::Center),
+            banner_area,
+        );
+    }
 }
 
 fn render_results(model: &Model, frame: &mut Frame) {
@@ -616,6 +637,7 @@ mod tests {
             },
             config: Config::default(),
             history: Vec::new(),
+            pending_update: None,
         }
     }
 
@@ -664,6 +686,15 @@ mod tests {
     }
 
     #[test]
+    fn idle_screen_update_banner_snapshot() {
+        let mut model = test_model(&["the", "quick", "brown", "fox"], 0, &[]);
+        model.session.status = crate::model::TestStatus::Waiting;
+        model.pending_update = Some("v1.0.0".into());
+        let output = render_to_string(&model, 80, 24);
+        insta::assert_snapshot!(output);
+    }
+
+    #[test]
     fn results_screen_snapshot() {
         let words = vec![
             {
@@ -699,6 +730,7 @@ mod tests {
             },
             config: Config::default(),
             history: Vec::new(),
+            pending_update: None,
         };
         let output = render_to_string(&model, 80, 24);
         insta::assert_snapshot!(output);
@@ -797,6 +829,7 @@ mod tests {
             },
             config: Config::default(),
             history: Vec::new(),
+            pending_update: None,
         };
         let output = render_to_string(&model, 80, 24);
         insta::assert_snapshot!(output);

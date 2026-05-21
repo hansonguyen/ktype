@@ -210,6 +210,13 @@ pub fn update(model: &mut Model, msg: Msg) -> Command {
                 count: model.config.initial_word_count(),
             };
         }
+
+        // Update notifications arrive asynchronously from the background version-check
+        // thread. Store the version string so the view can display a banner; the
+        // notification intentionally survives Tab restarts (the update is still available).
+        Msg::UpdateAvailable(version) => {
+            model.pending_update = Some(version);
+        }
     }
 
     Command::None
@@ -230,6 +237,7 @@ mod tests {
             session: SessionState::new(words.iter().map(|w| Word::new(w)).collect()),
             config: Config::default(),
             history: Vec::new(),
+            pending_update: None,
         }
     }
 
@@ -754,6 +762,7 @@ mod prop_tests {
             session: SessionState::new(words.iter().map(|w| Word::new(w)).collect()),
             config: Config::default(),
             history: Vec::new(),
+            pending_update: None,
         }
     }
 

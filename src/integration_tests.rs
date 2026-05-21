@@ -17,6 +17,7 @@ fn two_word_time_mode_model() -> Model {
         session: SessionState::new(vec![Word::new("hi"), Word::new("ok")]),
         config: Config::default(), // default is Time mode
         history: Vec::new(),
+        pending_update: None,
     }
 }
 
@@ -31,6 +32,7 @@ fn two_word_model() -> Model {
         session: SessionState::new(vec![Word::new("hi"), Word::new("ok")]),
         config,
         history: Vec::new(),
+        pending_update: None,
     }
 }
 
@@ -191,6 +193,7 @@ fn raw_accuracy_includes_corrected_errors() {
             c
         },
         history: Vec::new(),
+        pending_update: None,
     };
 
     // Type wrong char, backspace, then correct — error must persist
@@ -213,4 +216,17 @@ fn raw_accuracy_includes_corrected_errors() {
         "accuracy was {}",
         result.accuracy
     );
+}
+
+#[test]
+fn version_check_sends_on_channel() {
+    use std::sync::mpsc;
+    use std::time::Duration;
+    use update_informer::registry;
+
+    let (tx, rx) = mpsc::channel();
+    let informer = update_informer::fake(registry::Crates, "ktype", "0.4.0", "99.0.0");
+    crate::spawn_version_check(tx, informer);
+    let version = rx.recv_timeout(Duration::from_secs(2)).unwrap();
+    assert_eq!(version, "v99.0.0");
 }

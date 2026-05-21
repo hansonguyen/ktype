@@ -28,29 +28,35 @@ use view::view;
 #[command(version, about)]
 struct Cli {}
 
+fn spawn_version_check(tx: std::sync::mpsc::Sender<String>, informer: impl Check + Send + 'static) {
+    std::thread::spawn(move || {
+        if let Some(version) = informer.check_version().ok().flatten() {
+            let _ = tx.send(version.to_string());
+        }
+    });
+}
+
 fn main() -> Result<()> {
     Cli::parse();
 
-    std::thread::spawn(|| {
-        let informer = update_informer::new(
-            registry::Crates,
-            env!("CARGO_PKG_NAME"),
-            env!("CARGO_PKG_VERSION"),
-        );
-        if let Some(version) = informer.check_version().ok().flatten() {
-            eprintln!(
-                "A new version {version} is available — run `cargo install ktype` to upgrade."
-            );
-        }
-    });
+    let (tx, rx) = std::sync::mpsc::channel::<String>();
+    let informer = update_informer::new(
+        registry::Crates,
+        env!("CARGO_PKG_NAME"),
+        env!("CARGO_PKG_VERSION"),
+    );
+    spawn_version_check(tx, informer);
 
     let mut terminal = ratatui::init();
-    let result = run(&mut terminal);
+    let result = run(&mut terminal, rx);
     ratatui::restore();
     result
 }
 
-fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
+fn run(
+    terminal: &mut ratatui::DefaultTerminal,
+    update_rx: std::sync::mpsc::Receiver<String>,
+) -> Result<()> {
     let mut rng: SmallRng = rand::make_rng();
     let mut model = Model::default();
     match persistence::load() {
@@ -77,6 +83,11 @@ fn run(terminal: &mut ratatui::DefaultTerminal) -> Result<()> {
             && let Some(msg) = input::event_to_msg(crossterm::event::read()?)
         {
             let cmd = update(&mut model, msg);
+            execute_command(&mut model, cmd, &mut rng);
+        }
+
+        if let Ok(version) = update_rx.try_recv() {
+            let cmd = update(&mut model, Msg::UpdateAvailable(version));
             execute_command(&mut model, cmd, &mut rng);
         }
 

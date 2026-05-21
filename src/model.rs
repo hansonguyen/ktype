@@ -126,6 +126,7 @@ pub struct Model {
     pub session: SessionState,
     pub config: Config,
     pub history: Vec<SessionResult>,
+    pub pending_update: Option<String>,
 }
 
 impl Default for Model {
@@ -135,6 +136,7 @@ impl Default for Model {
             session: SessionState::new(Vec::new()),
             config: Config::default(),
             history: Vec::new(),
+            pending_update: None,
         }
     }
 }

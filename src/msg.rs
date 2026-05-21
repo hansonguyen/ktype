@@ -11,4 +11,5 @@ pub enum Msg {
     Left,
     Right,
     Esc,
+    UpdateAvailable(String),
 }
