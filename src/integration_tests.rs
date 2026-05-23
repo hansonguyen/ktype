@@ -13,11 +13,8 @@ use crate::update::update;
 
 fn two_word_time_mode_model() -> Model {
     Model {
-        screen: Screen::Typing,
         session: SessionState::new(vec![Word::new("hi"), Word::new("ok")]),
-        config: Config::default(), // default is Time mode
-        history: Vec::new(),
-        pending_update: None,
+        ..Model::default()
     }
 }
 
@@ -28,11 +25,9 @@ fn two_word_model() -> Model {
     // appending more words (which is the Time mode behavior).
     config.test_mode = TestMode::Words;
     Model {
-        screen: Screen::Typing,
         session: SessionState::new(vec![Word::new("hi"), Word::new("ok")]),
         config,
-        history: Vec::new(),
-        pending_update: None,
+        ..Model::default()
     }
 }
 
@@ -184,16 +179,12 @@ fn time_mode_words_never_run_out() {
 #[test]
 fn raw_accuracy_includes_corrected_errors() {
     let mut rng = SmallRng::seed_from_u64(0);
+    let mut config = Config::default();
+    config.test_mode = TestMode::Words;
     let mut model = Model {
-        screen: Screen::Typing,
         session: SessionState::new(vec![Word::new("hi"), Word::new("ok")]),
-        config: {
-            let mut c = Config::default();
-            c.test_mode = TestMode::Words;
-            c
-        },
-        history: Vec::new(),
-        pending_update: None,
+        config,
+        ..Model::default()
     };
 
     // Type wrong char, backspace, then correct — error must persist

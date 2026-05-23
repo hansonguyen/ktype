@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use crate::stats::SessionResult;
+use crate::theme::Theme;
 
 pub const DURATION_OPTIONS: [u64; 3] = [15, 30, 60];
 pub const WORD_COUNT_OPTIONS: [usize; 4] = [10, 25, 50, 100];
@@ -127,6 +128,7 @@ pub struct Model {
     pub config: Config,
     pub history: Vec<SessionResult>,
     pub pending_update: Option<String>,
+    pub theme: Theme,
 }
 
 impl Default for Model {
@@ -137,6 +139,7 @@ impl Default for Model {
             config: Config::default(),
             history: Vec::new(),
             pending_update: None,
+            theme: Theme::default(),
         }
     }
 }

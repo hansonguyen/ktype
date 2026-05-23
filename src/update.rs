@@ -227,17 +227,12 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::model::{
-        Config, Screen, SessionState, TestMode, TestStatus, WORD_COUNT_OPTIONS, Word,
-    };
+    use crate::model::{Screen, SessionState, TestMode, TestStatus, WORD_COUNT_OPTIONS, Word};
 
     fn model_with_words(words: &[&str]) -> Model {
         Model {
-            screen: Screen::Typing,
             session: SessionState::new(words.iter().map(|w| Word::new(w)).collect()),
-            config: Config::default(),
-            history: Vec::new(),
-            pending_update: None,
+            ..Model::default()
         }
     }
 
@@ -743,7 +738,7 @@ mod prop_tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::model::{Config, SessionState, Word};
+    use crate::model::{SessionState, Word};
     use proptest::prelude::*;
 
     fn arb_msg() -> impl Strategy<Value = Msg> {
@@ -758,11 +753,8 @@ mod prop_tests {
 
     fn model_with_words(words: &[&str]) -> Model {
         Model {
-            screen: Screen::Typing,
             session: SessionState::new(words.iter().map(|w| Word::new(w)).collect()),
-            config: Config::default(),
-            history: Vec::new(),
-            pending_update: None,
+            ..Model::default()
         }
     }
 

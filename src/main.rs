@@ -1,4 +1,5 @@
 mod commands;
+mod config;
 mod generator;
 mod input;
 mod metrics;
@@ -6,6 +7,7 @@ mod model;
 mod msg;
 mod persistence;
 mod stats;
+mod theme;
 mod update;
 mod view;
 
@@ -63,6 +65,10 @@ fn run(
         Ok(history) => model.history = history,
         Err(e) => eprintln!("ktype: failed to load stats: {e}"),
     }
+    if let Err(e) = config::write_if_missing() {
+        eprintln!("ktype: failed to write default config: {e}");
+    }
+    model.theme = config::load_or_default().theme;
     // timer_start is infrastructure — not app state. Owned here alongside rng.
     let mut timer_start: Option<Instant> = None;
 

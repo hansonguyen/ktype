@@ -1,14 +1,18 @@
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Layout, Rect},
-    style::{Color, Modifier, Style, Stylize},
+    style::{Modifier, Style},
     symbols::Marker,
     text::{Line, Span},
     widgets::{
-        Paragraph,
+        Block, Paragraph,
         canvas::{Canvas, Line as CanvasLine},
     },
 };
+
+fn fg(color: &crate::theme::HexColor) -> Style {
+    Style::new().fg(color.to_ratatui_color())
+}
 
 use crate::input::{CharState, char_state};
 use crate::metrics;
@@ -17,6 +21,11 @@ use crate::model::{
 };
 
 pub fn view(model: &Model, frame: &mut Frame) {
+    frame.render_widget(
+        Block::new().style(Style::new().bg(model.theme.bg.to_ratatui_color())),
+        frame.area(),
+    );
+
     match model.screen {
         Screen::Done => render_results(model, frame),
         Screen::Typing => render_typing(model, frame),
@@ -39,7 +48,7 @@ pub fn view(model: &Model, frame: &mut Frame) {
         frame.render_widget(
             Paragraph::new(Span::styled(
                 format!("new version {version} available — cargo install ktype"),
-                Style::new().dim(),
+                fg(&model.theme.sub),
             ))
             .alignment(Alignment::Center),
             banner_area,
@@ -81,15 +90,17 @@ fn render_results(model: &Model, frame: &mut Frame) {
 
     // Mode strip
     let mut result_header: Vec<Span> = Vec::new();
-    result_header.extend(mode_selector_spans(&model.config.test_mode));
+    result_header.extend(mode_selector_spans(&model.config.test_mode, &model.theme));
     result_header.push(Span::raw("   "));
     match model.config.test_mode {
-        TestMode::Time => {
-            result_header.extend(duration_strip_spans(model.config.selected_duration_idx))
-        }
-        TestMode::Words => {
-            result_header.extend(word_count_strip_spans(model.config.selected_word_count_idx))
-        }
+        TestMode::Time => result_header.extend(duration_strip_spans(
+            model.config.selected_duration_idx,
+            &model.theme,
+        )),
+        TestMode::Words => result_header.extend(word_count_strip_spans(
+            model.config.selected_word_count_idx,
+            &model.theme,
+        )),
     }
     frame.render_widget(
         Paragraph::new(Line::from(result_header)).alignment(Alignment::Center),
@@ -112,24 +123,24 @@ fn render_results(model: &Model, frame: &mut Frame) {
     .split(content[0]);
 
     frame.render_widget(
-        Paragraph::new(Span::styled("wpm", Style::new().dim())),
+        Paragraph::new(Span::styled("wpm", fg(&model.theme.sub))),
         left[0],
     );
     frame.render_widget(
         Paragraph::new(Span::styled(
             format!("{:.0}", wpm_val),
-            Style::new().add_modifier(Modifier::BOLD).fg(Color::Yellow),
+            fg(&model.theme.main).add_modifier(Modifier::BOLD),
         )),
         left[1],
     );
     frame.render_widget(
-        Paragraph::new(Span::styled("acc", Style::new().dim())),
+        Paragraph::new(Span::styled("acc", fg(&model.theme.sub))),
         left[3],
     );
     frame.render_widget(
         Paragraph::new(Span::styled(
             format!("{:.0}%", acc_val),
-            Style::new().add_modifier(Modifier::BOLD),
+            fg(&model.theme.text).add_modifier(Modifier::BOLD),
         )),
         left[4],
     );
@@ -150,7 +161,7 @@ fn render_results(model: &Model, frame: &mut Frame) {
     .split(bottom[0]);
 
     frame.render_widget(
-        Paragraph::new(Span::styled("test type", Style::new().dim())),
+        Paragraph::new(Span::styled("test type", fg(&model.theme.sub))),
         bottom_left[0],
     );
     let mode_detail = match model.config.test_mode {
@@ -163,12 +174,12 @@ fn render_results(model: &Model, frame: &mut Frame) {
     frame.render_widget(
         Paragraph::new(Span::styled(
             mode_detail,
-            Style::new().add_modifier(Modifier::BOLD),
+            fg(&model.theme.text).add_modifier(Modifier::BOLD),
         )),
         bottom_left[1],
     );
     frame.render_widget(
-        Paragraph::new(Span::styled("english", Style::new().dim())),
+        Paragraph::new(Span::styled("english", fg(&model.theme.sub))),
         bottom_left[2],
     );
 
@@ -191,25 +202,25 @@ fn render_results(model: &Model, frame: &mut Frame) {
     .split(bottom_right[1]);
 
     frame.render_widget(
-        Paragraph::new(Span::styled("raw", Style::new().dim())),
+        Paragraph::new(Span::styled("raw", fg(&model.theme.sub))),
         br_raw[0],
     );
     frame.render_widget(
         Paragraph::new(Span::styled(
             format!("{:.0}", raw_val),
-            Style::new().add_modifier(Modifier::BOLD),
+            fg(&model.theme.text).add_modifier(Modifier::BOLD),
         )),
         br_raw[1],
     );
 
     frame.render_widget(
-        Paragraph::new(Span::styled("time", Style::new().dim())),
+        Paragraph::new(Span::styled("time", fg(&model.theme.sub))),
         br_time[0],
     );
     frame.render_widget(
         Paragraph::new(Span::styled(
             format!("{}s", elapsed.as_secs()),
-            Style::new().add_modifier(Modifier::BOLD),
+            fg(&model.theme.text).add_modifier(Modifier::BOLD),
         )),
         br_time[1],
     );
@@ -217,9 +228,9 @@ fn render_results(model: &Model, frame: &mut Frame) {
     // Footer
     frame.render_widget(
         Paragraph::new(Line::from(vec![
-            Span::styled("[tab] change/restart", Style::new().dim()),
+            Span::styled("[tab] change/restart", fg(&model.theme.sub)),
             Span::raw("   "),
-            Span::styled("[esc] quit", Style::new().dim()),
+            Span::styled("[esc] quit", fg(&model.theme.sub)),
         ]))
         .alignment(Alignment::Center),
         vertical[6],
@@ -231,7 +242,7 @@ fn render_chart(model: &Model, frame: &mut Frame, area: Rect) {
 
     if wpm_history.is_empty() {
         frame.render_widget(
-            Paragraph::new(Span::styled("no data", Style::new().dim()))
+            Paragraph::new(Span::styled("no data", fg(&model.theme.sub)))
                 .alignment(Alignment::Center),
             area,
         );
@@ -283,7 +294,10 @@ fn render_chart(model: &Model, frame: &mut Frame, area: Rect) {
         let value = y_bound_max * (4 - i) as f64 / 4.0;
         let row = i * canvas_height.saturating_sub(1) / 4;
         if row < canvas_height {
-            y_lines[row] = Line::from(Span::styled(format!("{:>4.0}", value), Style::new().dim()));
+            y_lines[row] = Line::from(Span::styled(
+                format!("{:>4.0}", value),
+                fg(&model.theme.sub),
+            ));
         }
     }
     frame.render_widget(Paragraph::new(y_lines), chart_h[0]);
@@ -314,18 +328,20 @@ fn render_chart(model: &Model, frame: &mut Frame, area: Rect) {
     frame.render_widget(
         Paragraph::new(Span::styled(
             String::from_utf8_lossy(&x_buf).into_owned(),
-            Style::new().dim(),
+            fg(&model.theme.sub),
         )),
         x_labels_area,
     );
 
     // Canvas: WPM line + error markers
+    let main_color = model.theme.main.to_ratatui_color();
+    let error_style = fg(&model.theme.error);
     frame.render_widget(
         Canvas::default()
             .x_bounds([0.0, max_t])
             .y_bounds([0.0, y_bound_max])
             .marker(Marker::Braille)
-            .paint(|ctx| {
+            .paint(move |ctx| {
                 // WPM line segments; wpm_history[i] is the WPM at the end of second i+1.
                 // i=0: flat segment from x=0 to x=1 fills the opening gap.
                 // i>0: connects wpm[i-1] at x=i to wpm[i] at x=i+1.
@@ -340,17 +356,17 @@ fn render_chart(model: &Model, frame: &mut Frame, area: Rect) {
                         y1,
                         x2: (i + 1) as f64,
                         y2: wpm_history[i],
-                        color: Color::LightBlue,
+                        color: main_color,
                     });
                 }
-                // Error markers (× in red, scaled into WPM range)
+                // Error markers (×, scaled into WPM range)
                 for (i, &delta) in error_deltas.iter().enumerate() {
                     if delta > 0 {
                         let scaled_y = (delta as f64 / max_error_delta as f64) * max_wpm;
                         ctx.print(
                             (i + 1) as f64,
                             scaled_y,
-                            Line::from(Span::styled("×", Style::new().fg(Color::Red))),
+                            Line::from(Span::styled("×", error_style)),
                         );
                     }
                 }
@@ -359,7 +375,11 @@ fn render_chart(model: &Model, frame: &mut Frame, area: Rect) {
     );
 }
 
-fn options_strip_spans(labels: Vec<String>, selected_idx: usize) -> Vec<Span<'static>> {
+fn options_strip_spans(
+    labels: Vec<String>,
+    selected_idx: usize,
+    theme: &crate::theme::Theme,
+) -> Vec<Span<'static>> {
     let mut spans = Vec::new();
     for (i, label) in labels.into_iter().enumerate() {
         if i > 0 {
@@ -371,28 +391,28 @@ fn options_strip_spans(labels: Vec<String>, selected_idx: usize) -> Vec<Span<'st
             label
         };
         let style = if i == selected_idx {
-            Style::new().add_modifier(Modifier::BOLD)
+            fg(&theme.text).add_modifier(Modifier::BOLD)
         } else {
-            Style::new().dim()
+            fg(&theme.sub)
         };
         spans.push(Span::styled(display, style));
     }
     spans
 }
 
-fn duration_strip_spans(selected_idx: usize) -> Vec<Span<'static>> {
+fn duration_strip_spans(selected_idx: usize, theme: &crate::theme::Theme) -> Vec<Span<'static>> {
     let labels = DURATION_OPTIONS.iter().map(|s| s.to_string()).collect();
-    options_strip_spans(labels, selected_idx)
+    options_strip_spans(labels, selected_idx, theme)
 }
 
-fn word_count_strip_spans(selected_idx: usize) -> Vec<Span<'static>> {
+fn word_count_strip_spans(selected_idx: usize, theme: &crate::theme::Theme) -> Vec<Span<'static>> {
     let labels = WORD_COUNT_OPTIONS.iter().map(|s| s.to_string()).collect();
-    options_strip_spans(labels, selected_idx)
+    options_strip_spans(labels, selected_idx, theme)
 }
 
-fn mode_selector_spans(mode: &TestMode) -> Vec<Span<'static>> {
-    let selected_style = Style::new().add_modifier(Modifier::BOLD);
-    let unselected_style = Style::new().dim();
+fn mode_selector_spans(mode: &TestMode, theme: &crate::theme::Theme) -> Vec<Span<'static>> {
+    let selected_style = fg(&theme.text).add_modifier(Modifier::BOLD);
+    let unselected_style = fg(&theme.sub);
     match mode {
         TestMode::Time => vec![
             Span::styled("[time]", selected_style),
@@ -458,7 +478,7 @@ fn render_typing_running(model: &Model, frame: &mut Frame, content: Rect) {
     frame.render_widget(
         Paragraph::new(Span::styled(
             counter_text,
-            Style::new().fg(Color::Yellow).add_modifier(Modifier::BOLD),
+            fg(&model.theme.main).add_modifier(Modifier::BOLD),
         )),
         counter_area,
     );
@@ -487,26 +507,28 @@ fn render_typing_idle(model: &Model, frame: &mut Frame, content: Rect) {
         Span::styled("ktype", Style::new().add_modifier(Modifier::BOLD)),
         Span::raw("  "),
     ];
-    header_spans.extend(mode_selector_spans(&model.config.test_mode));
+    header_spans.extend(mode_selector_spans(&model.config.test_mode, &model.theme));
     header_spans.push(Span::raw("   "));
     match model.config.test_mode {
-        TestMode::Time => {
-            header_spans.extend(duration_strip_spans(model.config.selected_duration_idx))
-        }
-        TestMode::Words => {
-            header_spans.extend(word_count_strip_spans(model.config.selected_word_count_idx))
-        }
+        TestMode::Time => header_spans.extend(duration_strip_spans(
+            model.config.selected_duration_idx,
+            &model.theme,
+        )),
+        TestMode::Words => header_spans.extend(word_count_strip_spans(
+            model.config.selected_word_count_idx,
+            &model.theme,
+        )),
     }
     header_spans.push(Span::raw("   "));
-    header_spans.push(Span::styled("[←→] cycle", Style::new().dim()));
+    header_spans.push(Span::styled("[←→] cycle", fg(&model.theme.sub)));
     header_spans.push(Span::raw("  "));
-    header_spans.push(Span::styled("[tab] restart", Style::new().dim()));
+    header_spans.push(Span::styled("[tab] restart", fg(&model.theme.sub)));
     header_spans.push(Span::raw("  "));
     let mode_hint = match model.config.test_mode {
         TestMode::Time => "[shift+tab] → word mode",
         TestMode::Words => "[shift+tab] → time mode",
     };
-    header_spans.push(Span::styled(mode_hint, Style::new().dim()));
+    header_spans.push(Span::styled(mode_hint, fg(&model.theme.sub)));
 
     frame.render_widget(Paragraph::new(Line::from(header_spans)), header_area);
 
@@ -514,7 +536,7 @@ fn render_typing_idle(model: &Model, frame: &mut Frame, content: Rect) {
     frame.render_widget(Paragraph::new(word_lines), words_area);
 
     frame.render_widget(
-        Paragraph::new(Span::styled("[esc] quit", Style::new().dim())),
+        Paragraph::new(Span::styled("[esc] quit", fg(&model.theme.sub))),
         footer_area,
     );
 }
@@ -566,7 +588,7 @@ fn build_word_lines<'a>(model: &Model, width: u16) -> Vec<Line<'a>> {
         let spans = &mut all_lines[line_idx];
 
         if !spans.is_empty() {
-            spans.push(Span::styled(" ", Style::new().dim()));
+            spans.push(Span::styled(" ", fg(&model.theme.sub)));
         }
 
         for (char_idx, &ch) in word.chars.iter().enumerate() {
@@ -578,12 +600,12 @@ fn build_word_lines<'a>(model: &Model, width: u16) -> Vec<Line<'a>> {
                 word_idx == current_word && char_idx == word.typed.len() && !word.committed;
 
             let style = if is_cursor {
-                cursor_style(&model.config.cursor_style)
+                cursor_style(&model.config.cursor_style, &model.theme)
             } else {
                 match char_state(word, char_idx) {
-                    CharState::Correct => Style::new(),
-                    CharState::Incorrect => Style::new().fg(Color::Red),
-                    CharState::Untyped => Style::new().dim(),
+                    CharState::Correct => fg(&model.theme.text),
+                    CharState::Incorrect => fg(&model.theme.error),
+                    CharState::Untyped => fg(&model.theme.sub),
                 }
             };
 
@@ -603,17 +625,21 @@ fn build_word_lines<'a>(model: &Model, width: u16) -> Vec<Line<'a>> {
     visible
 }
 
-fn cursor_style(style: &CursorStyle) -> Style {
+fn cursor_style(style: &CursorStyle, theme: &crate::theme::Theme) -> Style {
     match style {
-        CursorStyle::Block => Style::new().add_modifier(Modifier::REVERSED),
-        CursorStyle::Underline => Style::new().add_modifier(Modifier::UNDERLINED),
+        CursorStyle::Block => Style::new()
+            .fg(theme.caret.to_ratatui_color())
+            .add_modifier(Modifier::REVERSED),
+        CursorStyle::Underline => Style::new()
+            .fg(theme.caret.to_ratatui_color())
+            .add_modifier(Modifier::UNDERLINED),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::model::{Config, DURATION_OPTIONS, Model, Screen, SessionState, Word};
+    use crate::model::{DURATION_OPTIONS, Model, Screen, SessionState, Word};
     use std::time::Duration;
 
     fn test_model(words: &[&str], current_word: usize, typed: &[&str]) -> Model {
@@ -635,9 +661,7 @@ mod tests {
                 wpm_history: Vec::new(),
                 error_history: Vec::new(),
             },
-            config: Config::default(),
-            history: Vec::new(),
-            pending_update: None,
+            ..Model::default()
         }
     }
 
@@ -728,9 +752,7 @@ mod tests {
                 wpm_history: Vec::new(),
                 error_history: Vec::new(),
             },
-            config: Config::default(),
-            history: Vec::new(),
-            pending_update: None,
+            ..Model::default()
         };
         let output = render_to_string(&model, 80, 24);
         insta::assert_snapshot!(output);
@@ -827,9 +849,7 @@ mod tests {
                 wpm_history: vec![0.0, 20.0, 24.0, 24.0, 24.0],
                 error_history: vec![0, 1, 1, 1, 1],
             },
-            config: Config::default(),
-            history: Vec::new(),
-            pending_update: None,
+            ..Model::default()
         };
         let output = render_to_string(&model, 80, 24);
         insta::assert_snapshot!(output);
