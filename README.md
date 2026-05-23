@@ -57,6 +57,30 @@ After each test, ktype shows:
 
 Stats are saved automatically to `~/.config/ktype/stats.json`.
 
+## Configuration
+
+ktype reads `~/.config/ktype/config.toml` on startup, creating it with defaults on first run.
+
+### Theme
+
+Edit the `[theme]` section to customize colors. All values are `#rrggbb` hex strings.
+
+```toml
+[theme]
+bg = "#323437"           # terminal background
+main = "#e2b714"         # primary accent (WPM, countdown, chart line)
+caret = "#e2b714"        # cursor
+sub = "#646669"          # muted text (untyped chars, labels, hints)
+sub_alt = "#2c2e31"      # alternate muted (reserved for future use)
+text = "#d1d0c5"         # correctly typed characters and stat values
+error = "#ca4754"        # incorrect characters
+error_extra = "#7e2a33"  # overflow indicator (reserved for future use)
+colorful_error = "#ca4754"        # richer error (reserved for future use)
+colorful_error_extra = "#7e2a33"  # reserved for future use
+```
+
+The defaults match [MonkeyType's serika dark](https://monkeytype.com) palette. Restart ktype after editing the file.
+
 ## Contributing
 
 See [CONTRIBUTING.md](CONTRIBUTING.md).

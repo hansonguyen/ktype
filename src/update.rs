@@ -210,6 +210,13 @@ pub fn update(model: &mut Model, msg: Msg) -> Command {
                 count: model.config.initial_word_count(),
             };
         }
+
+        // Update notifications arrive asynchronously from the background version-check
+        // thread. Store the version string so the view can display a banner; the
+        // notification intentionally survives Tab restarts (the update is still available).
+        Msg::UpdateAvailable(version) => {
+            model.pending_update = Some(version);
+        }
     }
 
     Command::None
@@ -220,16 +227,12 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::model::{
-        Config, Screen, SessionState, TestMode, TestStatus, WORD_COUNT_OPTIONS, Word,
-    };
+    use crate::model::{Screen, SessionState, TestMode, TestStatus, WORD_COUNT_OPTIONS, Word};
 
     fn model_with_words(words: &[&str]) -> Model {
         Model {
-            screen: Screen::Typing,
             session: SessionState::new(words.iter().map(|w| Word::new(w)).collect()),
-            config: Config::default(),
-            history: Vec::new(),
+            ..Model::default()
         }
     }
 
@@ -735,7 +738,7 @@ mod prop_tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::model::{Config, SessionState, Word};
+    use crate::model::{SessionState, Word};
     use proptest::prelude::*;
 
     fn arb_msg() -> impl Strategy<Value = Msg> {
@@ -750,10 +753,8 @@ mod prop_tests {
 
     fn model_with_words(words: &[&str]) -> Model {
         Model {
-            screen: Screen::Typing,
             session: SessionState::new(words.iter().map(|w| Word::new(w)).collect()),
-            config: Config::default(),
-            history: Vec::new(),
+            ..Model::default()
         }
     }
 

@@ -1,0 +1,29 @@
+---
+source: src/view.rs
+assertion_line: 694
+expression: output
+---
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+ktype  [time] words   [15]  30  60   [←→] cycle  [tab] restart  [shift+tab] → wo
+                                                                                
+the quick brown fox                                                             
+                                                                                
+                                                                                
+                                                                                
+[esc] quit                                                                      
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+               new version v1.0.0 available — cargo install ktype
