@@ -68,7 +68,9 @@ fn run(
     if let Err(e) = config::write_if_missing() {
         eprintln!("ktype: failed to write default config: {e}");
     }
-    model.theme = config::load_or_default().theme;
+    let app_config = config::load_or_default();
+    model.theme = app_config.theme;
+    model.config.caret_style = app_config.caret.style;
     // timer_start is infrastructure — not app state. Owned here alongside rng.
     let mut timer_start: Option<Instant> = None;
 

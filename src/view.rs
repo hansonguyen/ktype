@@ -1,3 +1,4 @@
+use crossterm::cursor::SetCursorStyle;
 use ratatui::{
     Frame,
     layout::{Alignment, Constraint, Layout, Rect},
@@ -17,7 +18,7 @@ fn fg(color: &crate::theme::HexColor) -> Style {
 use crate::input::{CharState, char_state};
 use crate::metrics;
 use crate::model::{
-    CursorStyle, DURATION_OPTIONS, Model, Screen, TestMode, TestStatus, WORD_COUNT_OPTIONS,
+    CaretStyle, DURATION_OPTIONS, Model, Screen, TestMode, TestStatus, WORD_COUNT_OPTIONS,
 };
 
 pub fn view(model: &Model, frame: &mut Frame) {
@@ -485,6 +486,7 @@ fn render_typing_running(model: &Model, frame: &mut Frame, content: Rect) {
 
     let word_lines = build_word_lines(model, words_area.width);
     frame.render_widget(Paragraph::new(word_lines), words_area);
+    apply_terminal_cursor(&model.config.caret_style, model, frame, words_area);
 }
 
 fn render_typing_idle(model: &Model, frame: &mut Frame, content: Rect) {
@@ -534,11 +536,16 @@ fn render_typing_idle(model: &Model, frame: &mut Frame, content: Rect) {
 
     let word_lines = build_word_lines(model, words_area.width);
     frame.render_widget(Paragraph::new(word_lines), words_area);
+    apply_terminal_cursor(&model.config.caret_style, model, frame, words_area);
 
     frame.render_widget(
         Paragraph::new(Span::styled("[esc] quit", fg(&model.theme.sub))),
         footer_area,
     );
+}
+
+fn scroll_for_line(cursor_line: usize) -> usize {
+    cursor_line.saturating_sub(1)
 }
 
 fn word_line_indices(words: &[crate::model::Word], width: u16) -> Vec<usize> {
@@ -579,7 +586,7 @@ fn build_word_lines<'a>(model: &Model, width: u16) -> Vec<Line<'a>> {
     let current_line = line_indices[current_word];
     // Scroll once the cursor reaches line 2 (0-indexed), keeping the cursor on the
     // second visible line so the user never types on line 3 and always reads ahead.
-    let scroll = current_line.saturating_sub(1);
+    let scroll = scroll_for_line(current_line);
 
     let total_lines = line_indices.last().copied().unwrap_or(0) + 1;
     let mut all_lines: Vec<Vec<Span<'a>>> = vec![Vec::new(); total_lines];
@@ -600,7 +607,12 @@ fn build_word_lines<'a>(model: &Model, width: u16) -> Vec<Line<'a>> {
                 word_idx == current_word && char_idx == word.typed.len() && !word.committed;
 
             let style = if is_cursor {
-                cursor_style(&model.config.cursor_style, &model.theme)
+                match model.config.caret_style {
+                    // Off and Default show no span-level cursor indicator;
+                    // Default relies on the terminal cursor via set_cursor_position.
+                    CaretStyle::Off | CaretStyle::Default => fg(&model.theme.sub),
+                    _ => cursor_style(&model.config.caret_style, &model.theme),
+                }
             } else {
                 match char_state(word, char_idx) {
                     CharState::Correct => fg(&model.theme.text),
@@ -625,15 +637,75 @@ fn build_word_lines<'a>(model: &Model, width: u16) -> Vec<Line<'a>> {
     visible
 }
 
-fn cursor_style(style: &CursorStyle, theme: &crate::theme::Theme) -> Style {
+fn cursor_style(style: &CaretStyle, theme: &crate::theme::Theme) -> Style {
     match style {
-        CursorStyle::Block => Style::new()
+        CaretStyle::Block => Style::new()
             .fg(theme.caret.to_ratatui_color())
             .add_modifier(Modifier::REVERSED),
-        CursorStyle::Underline => Style::new()
-            .fg(theme.caret.to_ratatui_color())
+        CaretStyle::Underline => Style::new()
+            .fg(theme.sub.to_ratatui_color())
+            .underline_color(theme.caret.to_ratatui_color())
             .add_modifier(Modifier::UNDERLINED),
+        // Off and Default never reach here — build_word_lines handles them before calling this.
+        CaretStyle::Off | CaretStyle::Default => unreachable!("cursor_style called for non-span style"),
     }
+}
+
+fn apply_terminal_cursor(
+    caret_style: &CaretStyle,
+    model: &Model,
+    frame: &mut Frame,
+    words_area: Rect,
+) {
+    let shape = match caret_style {
+        CaretStyle::Default => SetCursorStyle::DefaultUserShape,
+        _ => return,
+    };
+    if let Some((col, row)) = cursor_screen_pos(model, words_area) {
+        let _ = crossterm::execute!(std::io::stdout(), shape);
+        frame.set_cursor_position((col, row));
+    }
+}
+
+/// Computes the terminal cursor position (col, row) within `words_area` for the
+/// `Default` caret style, which delegates cursor rendering to the terminal.
+/// Returns `None` if the cursor is not visible (word committed or fully typed).
+fn cursor_screen_pos(model: &Model, words_area: Rect) -> Option<(u16, u16)> {
+    let words = &model.session.words;
+    if words.is_empty() {
+        return None;
+    }
+    let current_word = model.session.current_word.min(words.len() - 1);
+    let word = &words[current_word];
+    if word.committed || word.typed.len() >= word.chars.len() {
+        return None;
+    }
+
+    let max_width = words_area.width as usize;
+    let line_indices = word_line_indices(words, words_area.width);
+    let cursor_line = line_indices[current_word];
+    let scroll = scroll_for_line(cursor_line);
+    let visible_row = cursor_line.saturating_sub(scroll) as u16;
+
+    let mut col = 0u16;
+    let mut is_first_on_line = true;
+    for (i, w) in words.iter().enumerate() {
+        if line_indices[i] != cursor_line {
+            continue;
+        }
+        if !is_first_on_line {
+            col += 1; // space separator
+        }
+        if i == current_word {
+            break;
+        }
+        // Mirror word_line_indices' max_width.max(1) clamp so column math stays in sync.
+        col += w.chars.len().min(max_width.max(1)) as u16;
+        is_first_on_line = false;
+    }
+    col += word.typed.len() as u16;
+
+    Some((words_area.x + col, words_area.y + visible_row))
 }
 
 #[cfg(test)]
@@ -819,6 +891,70 @@ mod tests {
         // test_model already sets status = Running
         let output = render_to_string(&model, 80, 24);
         insta::assert_snapshot!("running_focus_mode", output);
+    }
+
+    #[test]
+    fn caret_style_off_snapshot() {
+        let mut model = test_model(&["the", "quick", "brown", "fox"], 1, &["the", "qu"]);
+        model.config.caret_style = crate::model::CaretStyle::Off;
+        let output = render_to_string(&model, 80, 24);
+        insta::assert_snapshot!("caret_off", output);
+    }
+
+    #[test]
+    fn caret_style_underline_snapshot() {
+        let mut model = test_model(&["the", "quick", "brown", "fox"], 1, &["the", "qu"]);
+        model.config.caret_style = crate::model::CaretStyle::Underline;
+        let output = render_to_string(&model, 80, 24);
+        insta::assert_snapshot!("caret_underline", output);
+    }
+
+    // cursor_style() unit tests — verify span-level styling for each rendered variant.
+    // Snapshot tests can't catch style regressions (TestBackend strips modifiers);
+    // these assert on the Style directly.
+    #[test]
+    fn cursor_style_block_applies_reversed_modifier() {
+        let theme = crate::theme::Theme::default();
+        let style = cursor_style(&CaretStyle::Block, &theme);
+        assert!(
+            style.add_modifier.contains(Modifier::REVERSED),
+            "Block caret must use REVERSED modifier"
+        );
+    }
+
+    #[test]
+    fn cursor_style_underline_applies_underline_modifier_and_color() {
+        let theme = crate::theme::Theme::default();
+        let style = cursor_style(&CaretStyle::Underline, &theme);
+        assert!(
+            style.add_modifier.contains(Modifier::UNDERLINED),
+            "Underline caret must use UNDERLINED modifier"
+        );
+        assert!(
+            style.underline_color.is_some(),
+            "Underline caret must set an underline color"
+        );
+    }
+
+    // cursor_screen_pos() unit tests — verify column arithmetic in the Default caret path.
+    #[test]
+    fn cursor_screen_pos_col_accounts_for_preceding_word() {
+        // "the" committed, cursor at start of "quick" (nothing typed yet).
+        // Expected col = 3 (len("the")) + 1 (space separator) + 0 (nothing typed) = 4.
+        let mut model = test_model(&["the", "quick"], 1, &["the"]);
+        model.session.words[0].committed = true;
+        let area = ratatui::layout::Rect { x: 0, y: 0, width: 80, height: 3 };
+        assert_eq!(cursor_screen_pos(&model, area), Some((4, 0)));
+    }
+
+    #[test]
+    fn cursor_screen_pos_col_includes_typed_chars() {
+        // "the" committed, "qu" typed in "quick".
+        // Expected col = 3 + 1 (space) + 2 (typed) = 6.
+        let mut model = test_model(&["the", "quick"], 1, &["the", "qu"]);
+        model.session.words[0].committed = true;
+        let area = ratatui::layout::Rect { x: 0, y: 0, width: 80, height: 3 };
+        assert_eq!(cursor_screen_pos(&model, area), Some((6, 0)));
     }
 
     #[test]

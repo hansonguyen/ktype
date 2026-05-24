@@ -43,17 +43,20 @@ impl Word {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum CursorStyle {
+#[derive(Debug, Clone, PartialEq, Default, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CaretStyle {
+    Off,
+    Default,
+    #[default]
     Block,
-    #[expect(dead_code)]
     Underline,
 }
 
 #[derive(Debug, Clone)]
 pub struct Config {
     pub test_mode: TestMode,
-    pub cursor_style: CursorStyle,
+    pub caret_style: CaretStyle,
     // time mode
     pub time_limit: Duration,
     // invariant: always a valid index into DURATION_OPTIONS
@@ -83,7 +86,7 @@ impl Default for Config {
     fn default() -> Self {
         Config {
             test_mode: TestMode::Time,
-            cursor_style: CursorStyle::Block,
+            caret_style: CaretStyle::Block,
             time_limit: Duration::from_secs(15),
             selected_duration_idx: 0,
             word_count: WORD_COUNT_OPTIONS[1], // 25
@@ -141,5 +144,32 @@ impl Default for Model {
             pending_update: None,
             theme: Theme::default(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn caret_style_default_is_block() {
+        let cfg = Config::default();
+        assert_eq!(cfg.caret_style, CaretStyle::Block);
+    }
+
+    #[test]
+    fn caret_style_serializes_to_lowercase() {
+        let s = serde_json::to_string(&CaretStyle::Underline).unwrap();
+        assert_eq!(s, "\"underline\"");
+        let s = serde_json::to_string(&CaretStyle::Off).unwrap();
+        assert_eq!(s, "\"off\"");
+    }
+
+    #[test]
+    fn caret_style_deserializes_from_lowercase() {
+        let v: CaretStyle = serde_json::from_str("\"block\"").unwrap();
+        assert_eq!(v, CaretStyle::Block);
+        let v: CaretStyle = serde_json::from_str("\"underline\"").unwrap();
+        assert_eq!(v, CaretStyle::Underline);
     }
 }
