@@ -10,15 +10,15 @@ expression: output
                                                                                 
                                                                                 
                                                                                 
-                                                                                
 ktype  [time] words   [15]  30  60  custom   [←→] cycle  [tab] restart  [shift+t
+                                                                                
                                                                                 
 the quick brown fox                                                             
                                                                                 
                                                                                 
                                                                                 
-[esc] quit                                                                      
                                                                                 
+                                   [esc] quit                                   
                                                                                 
                                                                                 
                                                                                 

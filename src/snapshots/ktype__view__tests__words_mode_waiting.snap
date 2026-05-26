@@ -10,11 +10,12 @@ expression: output
                                                                                 
                                                                                 
                                                                                 
-                                                                                
 ktype  time [words]   10  [25]  50  100  custom   [←→] cycle  [tab] restart  [sh
+                                                                                
                                                                                 
 the quick brown fox                                                             
                                                                                 
                                                                                 
                                                                                 
-[esc] quit
+                                                                                
+                                   [esc] quit

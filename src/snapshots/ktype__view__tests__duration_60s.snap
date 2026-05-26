@@ -10,11 +10,12 @@ expression: render_with_duration(2)
                                                                                 
                                                                                 
                                                                                 
-                                                                                
 ktype  [time] words   15  30  [60]  custom   [←→] cycle  [tab] restart  [shift+t
+                                                                                
                                                                                 
 the quick brown                                                                 
                                                                                 
                                                                                 
                                                                                 
-[esc] quit
+                                                                                
+                                   [esc] quit

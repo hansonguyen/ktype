@@ -478,18 +478,16 @@ fn render_typing(model: &Model, frame: &mut Frame) {
     let area = frame.area();
     let is_running = model.session.status == TestStatus::Running;
 
-    let horizontal = Layout::horizontal([
-        Constraint::Fill(1),
-        Constraint::Max(80),
-        Constraint::Fill(1),
-    ])
-    .split(area);
-    let content = horizontal[1];
-
     if is_running {
-        render_typing_running(model, frame, content);
+        let horizontal = Layout::horizontal([
+            Constraint::Fill(1),
+            Constraint::Max(80),
+            Constraint::Fill(1),
+        ])
+        .split(area);
+        render_typing_running(model, frame, horizontal[1]);
     } else {
-        render_typing_idle(model, frame, content);
+        render_typing_idle(model, frame, area);
     }
 }
 
@@ -556,21 +554,29 @@ fn render_typing_running(model: &Model, frame: &mut Frame, content: Rect) {
     }
 }
 
-fn render_typing_idle(model: &Model, frame: &mut Frame, content: Rect) {
+fn render_typing_idle(model: &Model, frame: &mut Frame, area: Rect) {
     let vertical = Layout::vertical([
         Constraint::Fill(1),
-        Constraint::Length(1), // header
-        Constraint::Length(1), // spacer
+        Constraint::Length(1), // header (full terminal width)
+        Constraint::Length(2), // spacer
         Constraint::Length(3), // word block
-        Constraint::Length(1), // spacer
+        Constraint::Length(2), // spacer
         Constraint::Length(1), // footer
         Constraint::Fill(1),
     ])
-    .split(content);
+    .split(area);
 
     let header_area = vertical[1];
-    let words_area = vertical[3];
     let footer_area = vertical[5];
+
+    // Center word block at 80 cols max, matching the running view.
+    let words_h = Layout::horizontal([
+        Constraint::Fill(1),
+        Constraint::Max(80),
+        Constraint::Fill(1),
+    ])
+    .split(vertical[3]);
+    let words_area = words_h[1];
 
     let mut header_spans: Vec<Span> = vec![
         Span::styled("ktype", Style::new().add_modifier(Modifier::BOLD)),
@@ -601,14 +607,18 @@ fn render_typing_idle(model: &Model, frame: &mut Frame, content: Rect) {
     };
     header_spans.push(Span::styled(mode_hint, fg(&model.theme.sub)));
 
-    frame.render_widget(Paragraph::new(Line::from(header_spans)), header_area);
+    frame.render_widget(
+        Paragraph::new(Line::from(header_spans)).alignment(Alignment::Center),
+        header_area,
+    );
 
     let word_lines = build_word_lines(model, words_area.width);
     frame.render_widget(Paragraph::new(word_lines), words_area);
     apply_terminal_cursor(&model.config.caret_style, model, frame, words_area);
 
     frame.render_widget(
-        Paragraph::new(Span::styled("[esc] quit", fg(&model.theme.sub))),
+        Paragraph::new(Span::styled("[esc] quit", fg(&model.theme.sub)))
+            .alignment(Alignment::Center),
         footer_area,
     );
 }
@@ -1176,6 +1186,33 @@ mod tests {
             height: 3,
         };
         assert_eq!(cursor_screen_pos(&model, area), Some((6, 0)));
+    }
+
+    #[test]
+    fn cursor_screen_pos_applies_words_area_x_offset() {
+        // At terminal width 160 the words block is centered: x = (160 - 80) / 2 = 40.
+        // Verify that words_area.x is added to the column result, not silently dropped.
+        // "the" committed, "qu" typed: logical col = 3 + 1 + 2 = 6 → absolute = 40 + 6 = 46.
+        let mut model = test_model(&["the", "quick"], 1, &["the", "qu"]);
+        model.session.words[0].committed = true;
+        let area = ratatui::layout::Rect {
+            x: 40,
+            y: 5,
+            width: 80,
+            height: 3,
+        };
+        assert_eq!(cursor_screen_pos(&model, area), Some((46, 5)));
+    }
+
+    #[test]
+    fn idle_wide_terminal_snapshot() {
+        // Snapshot at 160 cols: exercises the centering path (words_area.x = 40 > 0)
+        // that 80-col tests cannot reach. Header and footer should be centered;
+        // words block should occupy the middle 80 cols.
+        let mut model = test_model(&["the", "quick", "brown", "fox"], 0, &[]);
+        model.session.status = crate::model::TestStatus::Waiting;
+        let output = render_to_string(&model, 160, 24);
+        insta::assert_snapshot!("idle_wide_terminal", output);
     }
 
     #[test]

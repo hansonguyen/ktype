@@ -10,12 +10,12 @@ expression: output
                                                                                 
                                                                                 
              ╭────────────────────────────────────────────────────╮             
-             │                    Test Duration                   │             
-ktype  [time]│                1 hour and 30 minutes               │art  [shift+t
+ktype  [time]│                    Test Duration                   │art  [shift+t
+             │                1 hour and 30 minutes               │             
              │╭──────────────────────────────────────────────────╮│             
 the quick bro││1h30m_                                            ││             
              │╰──────────────────────────────────────────────────╯│             
              │use h for hours, m for minutes (e.g. 1h30m). 0 = inf│             
              │            [enter] apply   [esc] cancel            │             
-[esc] quit   │                                                    │             
+             │                                                    │             
              ╰────────────────────────────────────────────────────╯
