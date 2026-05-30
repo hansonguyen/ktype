@@ -1,0 +1,21 @@
+---
+source: src/ui/mod.rs
+expression: output
+---
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+ktype  @ punctuation  # numbers   [time] words   [15]  30  60  custom   [←→] cyc
+                                                                                
+                                                                                
+the quick brown fox                                                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                   [esc] quit

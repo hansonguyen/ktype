@@ -1,0 +1,28 @@
+---
+source: src/ui/mod.rs
+expression: output
+---
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+ktype  @ punctuation  # numbers   [time] words   [15]  30  60  custom   [←→] cyc
+                                                                                
+                                                                                
+the quick brown fox                                                             
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                   [esc] quit                                   
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+               new version v1.0.0 available — cargo install ktype

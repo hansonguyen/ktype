@@ -11,8 +11,12 @@ keywords = ["typing", "terminal", "wpm", "tui", "monkeytype"]
 categories = ["command-line-utilities"]
 exclude = [".github", "docs"]
 
+[lib]
+name = "ktype"
+
 [[bin]]
 name = "ktype"
+path = "src/main.rs"
 
 [dependencies]
 ratatui = "0.29"

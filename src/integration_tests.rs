@@ -4,12 +4,13 @@ use rand::SeedableRng;
 use rand::rngs::SmallRng;
 use tempfile::TempDir;
 
-use crate::commands::{Command, execute_command};
-use crate::model::{Config, Model, Screen, SessionState, TestMode, TestStatus, Word};
-use crate::msg::Msg;
-use crate::persistence;
-use crate::stats::SessionResult;
-use crate::update::update;
+use crate::domain::model::{Model, Screen, SessionState, TestStatus, Word};
+use crate::domain::msg::Msg;
+use crate::domain::test_config::{TestConfig, TestMode};
+use crate::domain::update::update;
+use crate::io::commands::{Command, execute_command};
+use crate::io::persistence;
+use crate::io::stats::SessionResult;
 
 fn two_word_time_mode_model() -> Model {
     Model {
@@ -19,11 +20,13 @@ fn two_word_time_mode_model() -> Model {
 }
 
 fn two_word_model() -> Model {
-    let mut config = Config::default();
     // Integration tests exercise the word-completion end-of-session path;
     // use Words mode so Space on the last word ends the test rather than
     // appending more words (which is the Time mode behavior).
-    config.test_mode = TestMode::Words;
+    let config = TestConfig {
+        test_mode: TestMode::Words,
+        ..TestConfig::default()
+    };
     Model {
         session: SessionState::new(vec![Word::new("hi"), Word::new("ok")]),
         config,
@@ -46,7 +49,7 @@ fn full_session_via_word_completion() {
     let cmd = update(&mut model, Msg::Space);
     execute_command(&mut model, cmd, &mut rng);
 
-    assert_eq!(model.screen, Screen::Done);
+    assert_eq!(model.screen, Screen::Results);
     assert_eq!(model.history.len(), 1);
 }
 
@@ -67,7 +70,7 @@ fn timer_expiry_saves_stats() {
     assert!(matches!(cmd, Command::SaveStats(_)));
     execute_command(&mut model, cmd, &mut rng);
 
-    assert_eq!(model.screen, Screen::Done);
+    assert_eq!(model.screen, Screen::Results);
     assert_eq!(model.session.status, TestStatus::Done);
     assert_eq!(model.history.len(), 1);
 }
@@ -84,7 +87,7 @@ fn tab_from_done_resets_session() {
     update(&mut model, Msg::Char('o'));
     let cmd = update(&mut model, Msg::Space);
     execute_command(&mut model, cmd, &mut rng);
-    assert_eq!(model.screen, Screen::Done);
+    assert_eq!(model.screen, Screen::Results);
 
     // Tab from Done: restart-only, does not cycle duration
     let cmd = update(&mut model, Msg::Tab);
@@ -144,7 +147,7 @@ fn words_mode_full_session() {
     update(&mut model, Msg::Char('o'));
     let cmd = update(&mut model, Msg::Char('k'));
     assert_eq!(model.session.status, TestStatus::Done);
-    assert_eq!(model.screen, Screen::Done);
+    assert_eq!(model.screen, Screen::Results);
     assert!(matches!(cmd, Command::SaveStats(_)));
     execute_command(&mut model, cmd, &mut rng);
     assert_eq!(model.history.len(), 1);
@@ -179,8 +182,10 @@ fn time_mode_words_never_run_out() {
 #[test]
 fn raw_accuracy_includes_corrected_errors() {
     let mut rng = SmallRng::seed_from_u64(0);
-    let mut config = Config::default();
-    config.test_mode = TestMode::Words;
+    let config = TestConfig {
+        test_mode: TestMode::Words,
+        ..TestConfig::default()
+    };
     let mut model = Model {
         session: SessionState::new(vec![Word::new("hi"), Word::new("ok")]),
         config,
@@ -200,7 +205,7 @@ fn raw_accuracy_includes_corrected_errors() {
 
     // total_chars_typed = 3 ('x', 'h', 'o'), total_errors = 1 ('x')
     // accuracy = (3 - 1) / 3 * 100 ≈ 66.67%
-    assert_eq!(model.screen, Screen::Done);
+    assert_eq!(model.screen, Screen::Results);
     let result = model.history.last().expect("stats saved");
     assert!(
         (result.accuracy - 66.67).abs() < 0.1,
@@ -217,7 +222,7 @@ fn version_check_sends_on_channel() {
 
     let (tx, rx) = mpsc::channel();
     let informer = update_informer::fake(registry::Crates, "ktype", "0.4.0", "99.0.0");
-    crate::spawn_version_check(tx, informer);
+    crate::app::spawn_version_check(tx, informer);
     let version = rx.recv_timeout(Duration::from_secs(2)).unwrap();
     assert_eq!(version, "v99.0.0");
 }

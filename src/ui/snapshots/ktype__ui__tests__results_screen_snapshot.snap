@@ -1,0 +1,28 @@
+---
+source: src/ui/mod.rs
+expression: output
+---
+                       [time] words   [15]  30  60  custom                      
+                                                                                
+wpm                                         no data                             
+12                                                                              
+                                                                                
+acc                                                                             
+0%                                                                              
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+                                                                                
+test type                       raw                     time                    
+time 15                         18                      10s                     
+english                                                                         
+                        [tab] change/restart   [esc] quit

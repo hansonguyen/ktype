@@ -1,28 +1,5 @@
-use crate::model::Word;
-use crate::msg::Msg;
+use crate::domain::msg::Msg;
 use crossterm::event::{Event, KeyCode, KeyEvent, KeyEventKind, KeyModifiers};
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum CharState {
-    Untyped,
-    Correct,
-    Incorrect,
-}
-
-// Derives the display state of word.chars[idx] from what was typed.
-// State is never stored in the model — derived fresh on every render.
-pub fn char_state(word: &Word, idx: usize) -> CharState {
-    match word.typed.chars().nth(idx) {
-        None => CharState::Untyped,
-        Some(typed_c) => {
-            if word.chars.get(idx) == Some(&typed_c) {
-                CharState::Correct
-            } else {
-                CharState::Incorrect
-            }
-        }
-    }
-}
 
 pub fn event_to_msg(event: Event) -> Option<Msg> {
     match event {
@@ -57,36 +34,6 @@ pub fn event_to_msg(event: Event) -> Option<Msg> {
 mod tests {
     use super::*;
     use crossterm::event::KeyModifiers;
-
-    fn make_word(text: &str, typed: &str) -> Word {
-        let mut w = Word::new(text);
-        w.typed = typed.to_string();
-        w
-    }
-
-    // --- char_state ---
-
-    #[test]
-    fn untyped_when_not_yet_reached() {
-        let word = make_word("hello", "he");
-        assert_eq!(char_state(&word, 2), CharState::Untyped);
-        assert_eq!(char_state(&word, 4), CharState::Untyped);
-    }
-
-    #[test]
-    fn correct_when_typed_char_matches() {
-        let word = make_word("hello", "he");
-        assert_eq!(char_state(&word, 0), CharState::Correct);
-        assert_eq!(char_state(&word, 1), CharState::Correct);
-    }
-
-    #[test]
-    fn incorrect_when_typed_char_differs() {
-        let word = make_word("hello", "hx");
-        assert_eq!(char_state(&word, 1), CharState::Incorrect);
-    }
-
-    // --- event_to_msg ---
 
     fn key_press(code: KeyCode) -> Event {
         Event::Key(KeyEvent {
