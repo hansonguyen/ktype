@@ -8,10 +8,13 @@ A terminal-native typing test inspired by Monkeytype — fast, minimal, and offl
 
 ## Features
 
-- Timed tests: 15s, 30s, or 60s (cycle with `Tab`)
-- Live WPM, raw WPM, accuracy, and character breakdown
+- Time mode (15s / 30s / 60s) and words mode (10 / 25 / 50 / 100)
+- Custom time (`1h30m` syntax) and custom word counts, plus infinite mode
+- Punctuation (`@`) and numbers (`#`) toggles for the word bank
+- Live WPM, raw WPM, accuracy, time, and a WPM-over-time chart
+- Themeable colors and caret style via `~/.config/ktype/config.toml`
 - Persistent stats saved to `~/.config/ktype/stats.json`
-- Zero config, zero network — runs entirely offline
+- Offline-first — no network use while typing
 
 ## Install
 
@@ -35,25 +38,37 @@ cargo install --path .
 ktype
 ```
 
-ktype starts a 15-second timed test immediately. Press `Tab` to cycle through duration options (15s → 30s → 60s) before typing begins.
+ktype starts in time mode. Before typing begins, `Shift+Tab` switches between
+time and words mode, and `←` / `→` cycle the selected option (durations in time
+mode, word counts in words mode). Cycling past the last preset lands on a
+**custom** slot — press `Space` to open a prompt and enter a value: time accepts
+`1h30m`-style input, words accepts a plain number. A custom value of `0` enables
+**infinite mode** (no limit; press `Ctrl+E` to end). Just start typing to begin.
 
 ## Keybindings
 
-| Key               | Action                                    |
-|-------------------|-------------------------------------------|
-| `Tab`             | Cycle duration (when not typing) / Restart |
-| `Space` / `Enter` | Commit current word                       |
-| `Backspace`       | Delete last character                     |
-| `Esc`             | Quit                                      |
+| Key               | Action                                              |
+|-------------------|-----------------------------------------------------|
+| `←` / `→`         | Cycle the selected option (when idle)               |
+| `Shift+Tab`       | Switch time / words mode (when idle)                |
+| `Tab`             | Restart with fresh words                            |
+| `Space` / `Enter` | Commit word (when typing) / open custom prompt (custom slot, idle) |
+| `Backspace`       | Delete character, or step back to the previous word |
+| `@`               | Toggle punctuation (when idle)                      |
+| `#`               | Toggle numbers (when idle)                          |
+| `Ctrl+E`          | End the current test                                |
+| `Esc`             | Quit (or close the custom prompt)                   |
 
 ## Results
 
 After each test, ktype shows:
 
 - **WPM** — words per minute (correctly typed words only)
-- **Raw WPM** — all keystrokes, including errors
+- **Raw WPM** — all committed words, including errors
 - **Accuracy** — percentage of correct keystrokes
-- **Breakdown** — correct / incorrect / extra / missed characters
+- **Time** — elapsed seconds
+- **Test type** — mode and active word bank
+- **WPM chart** — speed over the course of the test
 
 Stats are saved automatically to `~/.config/ktype/stats.json`.
 
@@ -80,6 +95,16 @@ colorful_error_extra = "#7e2a33"  # reserved for future use
 ```
 
 The defaults match [MonkeyType's serika dark](https://monkeytype.com) palette. Restart ktype after editing the file.
+
+### Caret
+
+The `[caret]` section sets the cursor style. Valid values are `off`, `default`,
+`block` (the default), and `underline`.
+
+```toml
+[caret]
+style = "block"
+```
 
 ## Contributing
 

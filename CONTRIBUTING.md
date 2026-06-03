@@ -20,10 +20,10 @@ Thanks for your interest in ktype. Contributions are welcome — bug fixes, feat
 
 ## Architecture
 
-ktype follows The Elm Architecture (TEA). Read `CLAUDE.md` for the module layout and the core constraints before touching `update.rs` or `view.rs`:
+ktype follows The Elm Architecture (TEA). Read `CLAUDE.md` for the module layout and the core constraints before touching the update or rendering code:
 
-- `update` must be pure — no I/O or side effects; return a `Command` for anything effectful
-- `view` must be pure — read `Model` only, never mutate state
+- The update step must be pure — no I/O or side effects; it returns a description of any effect for the I/O layer to run
+- Rendering must be pure — it reads state only, never mutating it
 
 ## Testing
 

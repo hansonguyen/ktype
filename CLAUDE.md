@@ -1,6 +1,22 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code (claude.ai/code) when working in this repository.
+
+## What ktype is
+
+ktype is a terminal-native typing test inspired by Monkeytype — fast, minimal,
+and offline-first. It is driven through an interactive terminal UI, with user
+preferences persisted to a TOML config file.
+
+- **Modes**: time-limited and word-count tests, with preset and custom values,
+  including an unbounded "infinite" variant.
+- **Word bank toggles**: punctuation and numbers can be mixed into generated text.
+- **Live metrics + results**: WPM, raw WPM, accuracy, time, and a WPM-over-time
+  chart on the results screen.
+- **Themeable**: colors and caret style are configurable.
+- **Persistent stats**: finished tests are appended to a local stats file.
+- **Update hint**: a background check surfaces a "new version available" banner;
+  no network access happens while typing.
 
 ## Commands
 
@@ -16,47 +32,69 @@ cargo fmt                # format
 
 ## Architecture
 
-ktype follows **The Elm Architecture (TEA)**. All state lives in `Model`, all events flow as `Msg`, `update` is the only place state changes, and `view` is pure rendering.
+ktype follows **The Elm Architecture (TEA)**: all state lives in one model, every
+event is a message, a single update step is the only place state changes, and
+rendering only reads state. Side effects never happen inside update — it returns
+a description of the effect, which the I/O layer carries out.
 
 ```
-main.rs        — terminal init/restore, 60fps event loop
-app.rs         — current skeleton (will be replaced by TEA modules)
-model.rs       — Model struct: Screen, SessionState, Stats, Config
-msg.rs         — Msg enum: all events, no side effects
-update.rs      — pure fn update(model, msg) -> Command
-view.rs        — pure fn view(model, frame): only renders, no mutation
-commands.rs    — side effects: save stats, generate words, start timer
-input.rs       — keystroke routing and raw character handling
-generator.rs   — random word generation (with punctuation/numbers toggles)
-metrics.rs     — WPM, raw WPM, accuracy, consistency calculations
-stats.rs       — session stats types
-persistence.rs — JSON R/W to ~/.config/ktype/stats.json
+src/
+  lib.rs, main.rs, cli.rs — crate root, binary shim, CLI entry
+  app.rs                  — the runtime: terminal setup, event loop, and the
+                            I/O-bearing infrastructure it owns
+  input.rs                — translates terminal events into messages
+  domain/                 — pure TEA core: model, messages, update logic,
+                            metrics, and test settings. No I/O.
+  io/                     — all side effects: effect execution and stats persistence
+  config/                 — user preferences loaded from / written to TOML
+  generator/              — word generation and the word list
+  ui/                      — pure rendering, one module per screen and widget
 ```
 
-The loop in `main.rs` polls events at 16ms (≈60fps), dispatches to `handle_event`, then redraws. `should_quit` on the app struct is the exit signal.
+Each frame the runtime renders the current state, polls for input, runs the
+update step, executes any resulting effect, advances a timer, and exits when the
+model signals it should quit.
 
 ## Key Conventions
 
-- `update` must remain pure — no I/O, no side effects; return a `Command` for anything async/effectful
-- `view` must remain pure — read `Model` only, never mutate
-- Character state (untyped / correct / incorrect / cursor) is the core data primitive for the test screen
-- Stats persist to `~/.config/ktype/stats.json`; future migration path is SQLite
-- Use `thiserror` for domain errors, `anyhow` for top-level CLI error propagation
-- Property tests (`proptest`) cover `update` invariants and metric calculations; snapshot tests (`insta`) cover rendered UI frames
+- The update step is the **only** place the model mutates; it stays pure (no I/O)
+  and expresses any effect by returning a value for the I/O layer to run.
+- Rendering reads the model only — it never mutates state.
+- Route every side effect (word generation, stats writes) through the effect
+  boundary in `io/`. Never inline I/O in update or rendering code.
+- Keep visibility as tight as possible — expose only what the binary entry needs.
+- Separate the runtime/session lifecycle from what is currently on screen; they
+  are distinct concerns and should stay distinct.
+- Treat infrastructure (RNG, timers, the terminal) as owned by the runtime layer,
+  not as application state.
+- Use `thiserror` for typed domain errors and `anyhow` at the CLI boundary.
+- Comment the *why* of non-obvious invariants, not the *what*.
+
+## Adding a feature
+
+Pick the seam that matches the change, and keep the domain and rendering layers
+pure with all effects in `io/`:
+
+- **New screen**: add a screen state, a rendering module for it, an update branch,
+  and a render-dispatch arm.
+- **New modal / overlay**: add an overlay state with its own render and
+  input-handling arms.
+- **New side effect**: add an effect variant and handle it in the I/O execution
+  layer — never perform the effect inside update.
+- **New persisted setting**: extend the config model and re-seed runtime state
+  when the config loads.
+- **Richer test options**: extend the test-settings model.
+
+Always add the matching test for the behavior, then run `cargo fmt`,
+`cargo clippy -- -D warnings`, and `cargo nextest run` before finishing — and
+review (e.g. `cargo insta review`) any new or changed snapshots.
 
 ## Testing Strategy
 
-- **Unit**: WPM/accuracy/character classification — pure functions, deterministic inputs
-- **Property** (`proptest`): `update` state machine invariants, generator output, persistence round-trips
-- **Snapshot** (`insta`): terminal frame rendering — catch UI regressions
-- **Integration**: full session flows (typing → result screen → restart), config toggles, persistence writes
-
-## Build Phases (from spec)
-
-1. ✅ Core event loop (`main.rs` + `app.rs`)
-2. → Typing engine (`model`, `msg`, `update`, `input`, `generator`)
-3. Rendering (`view`, ratatui widgets)
-4. Metrics (`metrics.rs`)
-5. Persistence (`persistence.rs`, `stats.rs`)
-6. Testing (nextest, proptest, insta)
-7. Polish + OSS release (README, CI, rustfmt, clippy)
+- **Unit**: metric calculations and character classification — pure, deterministic.
+- **Property** (`proptest`): update-step invariants, generator output, and
+  persistence round-trips.
+- **Snapshot** (`insta`): rendered terminal frames — catch UI regressions across
+  modes, themes, caret styles, and modals.
+- **Integration**: full session flows (typing → results → restart), config
+  toggles, and CLI behavior.
