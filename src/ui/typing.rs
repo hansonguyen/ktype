@@ -350,6 +350,7 @@ mod tests {
                 total_errors: 0,
                 wpm_history: Vec::new(),
                 error_history: Vec::new(),
+                chars_history: Vec::new(),
             },
             ..Model::default()
         }

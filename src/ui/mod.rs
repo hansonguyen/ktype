@@ -78,6 +78,7 @@ mod tests {
                 total_errors: 0,
                 wpm_history: Vec::new(),
                 error_history: Vec::new(),
+                chars_history: Vec::new(),
             },
             ..Model::default()
         }
@@ -187,6 +188,7 @@ mod tests {
                 total_errors: 0,
                 wpm_history: Vec::new(),
                 error_history: Vec::new(),
+                chars_history: Vec::new(),
             },
             ..Model::default()
         };
@@ -221,6 +223,7 @@ mod tests {
                 total_errors: 0,
                 wpm_history: Vec::new(),
                 error_history: Vec::new(),
+                chars_history: Vec::new(),
             },
             ..Model::default()
         };
@@ -347,6 +350,7 @@ mod tests {
                 total_errors: 1,
                 wpm_history: vec![0.0, 20.0, 24.0, 24.0, 24.0],
                 error_history: vec![0, 1, 1, 1, 1],
+                chars_history: vec![4, 9, 15, 20, 26],
             },
             ..Model::default()
         };

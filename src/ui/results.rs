@@ -23,6 +23,7 @@ pub(crate) fn render_results(model: &Model, frame: &mut Frame) {
     let raw_val = metrics::raw_wpm(committed_words, elapsed);
     let acc_val =
         metrics::raw_accuracy(model.session.total_chars_typed, model.session.total_errors);
+    let consistency_val = metrics::consistency(&model.session.chars_history);
 
     // Horizontally center the results block
     let [_, area, _] = Layout::horizontal([
@@ -113,7 +114,7 @@ pub(crate) fn render_results(model: &Model, frame: &mut Frame) {
     // Chart fills the right side
     render_chart(model, frame, chart_area);
 
-    // Bottom stats: left (test type) | right (raw + time)
+    // Bottom stats: left (test type) | right (raw | consistency | time)
     let [bottom_left, bottom_right] =
         Layout::horizontal([Constraint::Length(32), Constraint::Fill(1)]).areas(bottom_stats_area);
 
@@ -170,9 +171,13 @@ pub(crate) fn render_results(model: &Model, frame: &mut Frame) {
         word_bank_area,
     );
 
-    // Bottom-right: raw wpm | time
-    let [br_raw_area, br_time_area] =
-        Layout::horizontal([Constraint::Fill(1), Constraint::Fill(1)]).areas(bottom_right);
+    // Bottom-right: raw wpm | consistency | time
+    let [br_raw_area, br_consistency_area, br_time_area] = Layout::horizontal([
+        Constraint::Fill(1),
+        Constraint::Fill(1),
+        Constraint::Fill(1),
+    ])
+    .areas(bottom_right);
 
     let [raw_label, raw_val_area, _] = Layout::vertical([
         Constraint::Length(1),
@@ -180,6 +185,13 @@ pub(crate) fn render_results(model: &Model, frame: &mut Frame) {
         Constraint::Length(1),
     ])
     .areas(br_raw_area);
+
+    let [consistency_label, consistency_val_area, _] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Length(1),
+    ])
+    .areas(br_consistency_area);
 
     let [time_label, time_val_area, _] = Layout::vertical([
         Constraint::Length(1),
@@ -198,6 +210,18 @@ pub(crate) fn render_results(model: &Model, frame: &mut Frame) {
             fg(&model.theme.text).add_modifier(Modifier::BOLD),
         )),
         raw_val_area,
+    );
+
+    frame.render_widget(
+        Paragraph::new(Span::styled("consistency", fg(&model.theme.sub))),
+        consistency_label,
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            format!("{:.0}%", consistency_val),
+            fg(&model.theme.text).add_modifier(Modifier::BOLD),
+        )),
+        consistency_val_area,
     );
 
     frame.render_widget(

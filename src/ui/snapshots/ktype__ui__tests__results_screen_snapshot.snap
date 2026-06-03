@@ -22,7 +22,7 @@ acc
                                                                                 
                                                                                 
                                                                                 
-test type                       raw                     time                    
-time 15                         18                      10s                     
+test type                       raw             consistency     time            
+time 15                         18              0%              10s             
 english                                                                         
                         [tab] change/restart   [esc] quit

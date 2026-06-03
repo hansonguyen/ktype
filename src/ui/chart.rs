@@ -30,10 +30,18 @@ pub(crate) fn render_chart(model: &Model, frame: &mut Frame, area: Rect) {
 
     // Per-second error deltas from cumulative history
     let error_history = &model.session.error_history;
+    // wpm/error/chars histories are appended together once per second (see the
+    // Tick branch in update.rs), so their lengths must stay equal; consistency
+    // relies on chars_history being in lockstep with the chart's wpm points.
     debug_assert_eq!(
         wpm_history.len(),
         error_history.len(),
         "wpm_history and error_history must be kept in sync"
+    );
+    debug_assert_eq!(
+        wpm_history.len(),
+        model.session.chars_history.len(),
+        "wpm_history and chars_history must be kept in sync"
     );
     let error_deltas: Vec<u64> = error_history
         .iter()

@@ -61,6 +61,11 @@ pub struct SessionState {
     pub total_errors: u64,
     pub wpm_history: Vec<f64>,
     pub error_history: Vec<u64>,
+    /// Cumulative `total_chars_typed` sampled once per crossed second boundary.
+    /// Diffed into per-second raw-WPM samples for the consistency metric, the
+    /// same way `error_history` is diffed for the chart. Kept in lockstep length
+    /// with `wpm_history`/`error_history`.
+    pub chars_history: Vec<u64>,
 }
 
 impl SessionState {
@@ -74,6 +79,7 @@ impl SessionState {
             total_errors: 0,
             wpm_history: Vec::new(),
             error_history: Vec::new(),
+            chars_history: Vec::new(),
         }
     }
 }

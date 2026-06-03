@@ -299,6 +299,10 @@ pub fn update(model: &mut Model, msg: Msg) -> Command {
                 let wpm = metrics::wpm(correct_words, elapsed);
                 model.session.wpm_history.push(wpm);
                 model.session.error_history.push(model.session.total_errors);
+                model
+                    .session
+                    .chars_history
+                    .push(model.session.total_chars_typed);
             }
             // Only expire in time mode with a finite limit.
             if matches!(model.config.test_mode, TestMode::Time)
@@ -870,6 +874,28 @@ mod tests {
         // Second boundary
         update(&mut model, Msg::Tick(Duration::from_secs(2)));
         assert_eq!(model.session.wpm_history.len(), 2);
+    }
+
+    #[test]
+    fn tick_records_cumulative_chars_history_in_lockstep() {
+        let mut model = model_with_words(&["hello", "world"]);
+        update(&mut model, Msg::Char('h')); // start running
+        model.session.total_chars_typed = 5;
+        // First second boundary captures the current cumulative total
+        update(&mut model, Msg::Tick(Duration::from_secs(1)));
+        assert_eq!(model.session.chars_history, vec![5]);
+        // Mid-second: no new snapshot even though the total grew
+        model.session.total_chars_typed = 9;
+        update(&mut model, Msg::Tick(Duration::from_millis(1500)));
+        assert_eq!(model.session.chars_history, vec![5]);
+        // Next boundary snapshots the updated total
+        update(&mut model, Msg::Tick(Duration::from_secs(2)));
+        assert_eq!(model.session.chars_history, vec![5, 9]);
+        // All histories stay equal length
+        assert_eq!(
+            model.session.chars_history.len(),
+            model.session.wpm_history.len()
+        );
     }
 
     #[test]
