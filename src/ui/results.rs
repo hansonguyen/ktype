@@ -24,11 +24,12 @@ pub(crate) fn render_results(model: &Model, frame: &mut Frame) {
     let acc_val =
         metrics::raw_accuracy(model.session.total_chars_typed, model.session.total_errors);
     let consistency_val = metrics::consistency(&model.session.chars_history);
+    let breakdown = metrics::char_breakdown(&model.session.words);
 
     // Horizontally center the results block
     let [_, area, _] = Layout::horizontal([
         Constraint::Fill(1),
-        Constraint::Max(120),
+        Constraint::Max(140),
         Constraint::Fill(1),
     ])
     .areas(area);
@@ -114,7 +115,7 @@ pub(crate) fn render_results(model: &Model, frame: &mut Frame) {
     // Chart fills the right side
     render_chart(model, frame, chart_area);
 
-    // Bottom stats: left (test type) | right (raw | consistency | time)
+    // Bottom stats: left (test type) | right (raw | characters | consistency | time)
     let [bottom_left, bottom_right] =
         Layout::horizontal([Constraint::Length(32), Constraint::Fill(1)]).areas(bottom_stats_area);
 
@@ -171,8 +172,14 @@ pub(crate) fn render_results(model: &Model, frame: &mut Frame) {
         word_bank_area,
     );
 
-    // Bottom-right: raw wpm | consistency | time
-    let [br_raw_area, br_consistency_area, br_time_area] = Layout::horizontal([
+    // Bottom-right: raw wpm | characters | consistency | time
+    let [
+        br_raw_area,
+        br_characters_area,
+        br_consistency_area,
+        br_time_area,
+    ] = Layout::horizontal([
+        Constraint::Fill(1),
         Constraint::Fill(1),
         Constraint::Fill(1),
         Constraint::Fill(1),
@@ -210,6 +217,28 @@ pub(crate) fn render_results(model: &Model, frame: &mut Frame) {
             fg(&model.theme.text).add_modifier(Modifier::BOLD),
         )),
         raw_val_area,
+    );
+
+    let [characters_label, characters_val_area, _] = Layout::vertical([
+        Constraint::Length(1),
+        Constraint::Length(1),
+        Constraint::Length(1),
+    ])
+    .areas(br_characters_area);
+
+    frame.render_widget(
+        Paragraph::new(Span::styled("characters", fg(&model.theme.sub))),
+        characters_label,
+    );
+    frame.render_widget(
+        Paragraph::new(Span::styled(
+            format!(
+                "{}/{}/{}/{}",
+                breakdown.correct, breakdown.incorrect, breakdown.extra, breakdown.missed
+            ),
+            fg(&model.theme.text).add_modifier(Modifier::BOLD),
+        )),
+        characters_val_area,
     );
 
     frame.render_widget(

@@ -2,6 +2,47 @@ use std::time::Duration;
 
 use crate::domain::model::Word;
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct CharBreakdown {
+    pub correct: usize,
+    pub incorrect: usize,
+    pub extra: usize,
+    pub missed: usize,
+}
+
+pub fn char_breakdown(words: &[Word]) -> CharBreakdown {
+    let mut correct = 0;
+    let mut incorrect = 0;
+    let mut extra = 0;
+    let mut missed = 0;
+
+    for word in words {
+        if !word.committed && word.typed.is_empty() {
+            continue;
+        }
+        let typed: Vec<char> = word.typed.chars().collect();
+        let expected_len = word.chars.len();
+        let typed_len = typed.len();
+
+        for (i, &typed_char) in typed.iter().enumerate().take(typed_len.min(expected_len)) {
+            if typed_char == word.chars[i] {
+                correct += 1;
+            } else {
+                incorrect += 1;
+            }
+        }
+        extra += typed_len.saturating_sub(expected_len);
+        missed += expected_len.saturating_sub(typed_len);
+    }
+
+    CharBreakdown {
+        correct,
+        incorrect,
+        extra,
+        missed,
+    }
+}
+
 pub fn wpm(correct_words: usize, elapsed: Duration) -> f64 {
     if elapsed < Duration::from_millis(1) {
         return 0.0;
@@ -202,5 +243,113 @@ mod tests {
         let c = consistency(&[5, 15]);
         assert!(c > 0.0 && c < 100.0);
         assert!((c - 66.68).abs() < 0.5);
+    }
+
+    #[test]
+    fn char_breakdown_all_correct() {
+        let b = char_breakdown(&[word("hi", "hi", true)]);
+        assert_eq!(
+            b,
+            CharBreakdown {
+                correct: 2,
+                incorrect: 0,
+                extra: 0,
+                missed: 0
+            }
+        );
+    }
+
+    #[test]
+    fn char_breakdown_all_incorrect() {
+        let b = char_breakdown(&[word("hi", "xx", true)]);
+        assert_eq!(
+            b,
+            CharBreakdown {
+                correct: 0,
+                incorrect: 2,
+                extra: 0,
+                missed: 0
+            }
+        );
+    }
+
+    #[test]
+    fn char_breakdown_partial_commit_counts_missed() {
+        // User pressed space before finishing "hello"
+        let b = char_breakdown(&[word("hello", "hel", true)]);
+        assert_eq!(
+            b,
+            CharBreakdown {
+                correct: 3,
+                incorrect: 0,
+                extra: 0,
+                missed: 2
+            }
+        );
+    }
+
+    #[test]
+    fn char_breakdown_extra_chars_counted() {
+        let b = char_breakdown(&[word("hi", "hixxx", true)]);
+        assert_eq!(
+            b,
+            CharBreakdown {
+                correct: 2,
+                incorrect: 0,
+                extra: 3,
+                missed: 0
+            }
+        );
+    }
+
+    #[test]
+    fn char_breakdown_in_progress_word_included() {
+        // Non-committed word with partial typing (current active word at test end)
+        let b = char_breakdown(&[word("be", "b", false)]);
+        assert_eq!(
+            b,
+            CharBreakdown {
+                correct: 1,
+                incorrect: 0,
+                extra: 0,
+                missed: 1
+            }
+        );
+    }
+
+    #[test]
+    fn char_breakdown_untouched_buffered_words_excluded() {
+        let words = vec![Word::new("hello"), Word::new("world")];
+        let b = char_breakdown(&words);
+        assert_eq!(
+            b,
+            CharBreakdown {
+                correct: 0,
+                incorrect: 0,
+                extra: 0,
+                missed: 0
+            }
+        );
+    }
+
+    #[test]
+    fn char_breakdown_mixed_session() {
+        let words = vec![
+            word("hi", "hi", true),   // correct: 2
+            word("ok", "ox", true),   // correct: 1 (o=o), incorrect: 1 (x≠k)
+            word("go", "goxx", true), // correct: 2 (g,o), extra: 2 (xx)
+            word("be", "b", false),   // correct: 1 (b), missed: 1 (e)
+            Word::new("do"),          // untouched — excluded
+        ];
+        let b = char_breakdown(&words);
+        assert_eq!(
+            b,
+            CharBreakdown {
+                correct: 6,
+                incorrect: 1,
+                extra: 2,
+                missed: 1
+            }
+        );
     }
 }

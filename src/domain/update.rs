@@ -180,7 +180,7 @@ pub fn update(model: &mut Model, msg: Msg) -> Command {
             }
             let pushed = {
                 let word = &mut model.session.words[model.session.current_word];
-                if word.typed.len() < word.chars.len() {
+                if word.typed.len() < word.chars.len() + 20 {
                     word.typed.push(c);
                     let idx = word.typed.len() - 1;
                     let is_error = word.chars.get(idx) != Some(&c);
@@ -197,34 +197,48 @@ pub fn update(model: &mut Model, msg: Msg) -> Command {
             }
 
             let is_last = model.session.current_word == model.session.words.len() - 1;
-            let word_full = model.session.words[model.session.current_word].typed.len()
-                == model.session.words[model.session.current_word].chars.len();
-
-            if is_last && word_full {
+            if is_last {
                 let ends_test = matches!(model.config.test_mode, TestMode::Words)
                     && !model.config.is_infinite_words();
-
-                model.session.words[model.session.current_word].committed = true;
                 if ends_test {
-                    model.session.status = TestStatus::Done;
-                    model.screen = Screen::Results;
-                    return Command::SaveStats(build_stats_payload(model));
+                    // Words mode: only auto-end when the last word is exactly correct.
+                    // A typo or extra chars keeps the test alive so the user can fix it.
+                    let word = &model.session.words[model.session.current_word];
+                    let word_correct = word.typed == word.chars.iter().collect::<String>();
+                    if word_correct {
+                        model.session.words[model.session.current_word].committed = true;
+                        model.session.status = TestStatus::Done;
+                        model.screen = Screen::Results;
+                        return Command::SaveStats(build_stats_payload(model));
+                    }
                 } else {
-                    return Command::AppendWords { count: 1 };
+                    // Time / infinite words: append when the word is full.
+                    let word_full = model.session.words[model.session.current_word].typed.len()
+                        == model.session.words[model.session.current_word].chars.len();
+                    if word_full {
+                        model.session.words[model.session.current_word].committed = true;
+                        return Command::AppendWords { count: 1 };
+                    }
                 }
             }
         }
 
         Msg::Backspace => {
             let session = &mut model.session;
-            let word = &mut session.words[session.current_word];
-            if !word.typed.is_empty() {
-                word.typed.pop();
+            if !session.words[session.current_word].typed.is_empty() {
+                session.words[session.current_word].typed.pop();
             } else if session.current_word > 0 {
-                // Retreat to previous word so the user can correct it.
-                // Un-commit so it accepts input again.
-                session.current_word -= 1;
-                session.words[session.current_word].committed = false;
+                let prev = session.current_word - 1;
+                // Only retreat if the previous word had an error — correctly typed
+                // words are locked and cannot be edited after advancing past them.
+                let prev_correct = {
+                    let pw = &session.words[prev];
+                    pw.typed == pw.chars.iter().collect::<String>()
+                };
+                if !prev_correct {
+                    session.current_word -= 1;
+                    session.words[session.current_word].committed = false;
+                }
             }
         }
 
@@ -264,12 +278,21 @@ pub fn update(model: &mut Model, msg: Msg) -> Command {
                 return Command::None;
             }
             let is_last = model.session.current_word == model.session.words.len() - 1;
+            let ends_test = is_last
+                && matches!(model.config.test_mode, TestMode::Words)
+                && !model.config.is_infinite_words();
+
+            // In Words mode, Space on the last word requires the word to be correct.
+            if ends_test {
+                let word = &model.session.words[model.session.current_word];
+                if word.typed != word.chars.iter().collect::<String>() {
+                    return Command::None;
+                }
+            }
+
             model.session.words[model.session.current_word].committed = true;
 
             if is_last {
-                let ends_test = matches!(model.config.test_mode, TestMode::Words)
-                    && !model.config.is_infinite_words();
-
                 if ends_test {
                     model.session.status = TestStatus::Done;
                     model.screen = Screen::Results;
@@ -428,12 +451,21 @@ mod tests {
     }
 
     #[test]
-    fn char_capped_at_word_length() {
+    fn char_capped_at_overtype_limit() {
         let mut model = model_with_words(&["hi"]);
         update(&mut model, Msg::Char('h'));
         update(&mut model, Msg::Char('i'));
-        update(&mut model, Msg::Char('x')); // overtype — must be ignored
-        assert_eq!(model.session.words[0].typed, "hi");
+        // Overtype allowed up to 20 chars beyond word length
+        update(&mut model, Msg::Char('x')); // still within cap
+        assert_eq!(model.session.words[0].typed, "hix");
+        // Now fill up to the cap
+        for _ in 0..19 {
+            update(&mut model, Msg::Char('y'));
+        }
+        assert_eq!(model.session.words[0].typed.len(), 22); // 2 + 20 = 22
+        // Beyond the cap, char is rejected
+        update(&mut model, Msg::Char('z'));
+        assert_eq!(model.session.words[0].typed.len(), 22); // unchanged
     }
 
     #[test]
@@ -476,13 +508,24 @@ mod tests {
     }
 
     #[test]
-    fn space_on_last_word_sets_done() {
+    fn space_on_last_word_correct_sets_done() {
         let mut model = model_with_words(&["hi"]);
         model.config.test_mode = TestMode::Words;
         update(&mut model, Msg::Char('h'));
+        update(&mut model, Msg::Char('i'));
         update(&mut model, Msg::Space);
         assert_eq!(model.session.status, TestStatus::Done);
         assert_eq!(model.screen, Screen::Results);
+    }
+
+    #[test]
+    fn space_on_last_word_with_error_is_noop() {
+        let mut model = model_with_words(&["hi"]);
+        model.config.test_mode = TestMode::Words;
+        update(&mut model, Msg::Char('h')); // incomplete — 'i' not typed
+        update(&mut model, Msg::Space);
+        assert_eq!(model.session.status, TestStatus::Running);
+        assert_eq!(model.screen, Screen::Typing);
     }
 
     #[test]
@@ -511,12 +554,58 @@ mod tests {
         let mut model = model_with_words(&["go", "hi"]);
         model.config.test_mode = TestMode::Words;
         update(&mut model, Msg::Char('g'));
-        update(&mut model, Msg::Space); // commit first word, advance
+        update(&mut model, Msg::Space); // commit first word (with error), advance
         update(&mut model, Msg::Char('h'));
         assert_eq!(model.session.status, TestStatus::Running);
-        update(&mut model, Msg::Char('i')); // last char of last word
+        update(&mut model, Msg::Char('i')); // last char of last word — correct
         assert_eq!(model.session.status, TestStatus::Done);
         assert_eq!(model.screen, Screen::Results);
+    }
+
+    #[test]
+    fn last_char_with_typo_does_not_end_test() {
+        let mut model = model_with_words(&["hi"]);
+        model.config.test_mode = TestMode::Words;
+        update(&mut model, Msg::Char('h'));
+        update(&mut model, Msg::Char('x')); // wrong char at end
+        assert_eq!(model.session.status, TestStatus::Running);
+        assert_eq!(model.screen, Screen::Typing);
+    }
+
+    #[test]
+    fn last_word_ends_after_fix_and_retype() {
+        let mut model = model_with_words(&["hi"]);
+        model.config.test_mode = TestMode::Words;
+        update(&mut model, Msg::Char('h'));
+        update(&mut model, Msg::Char('x')); // wrong
+        assert_eq!(model.session.status, TestStatus::Running);
+        update(&mut model, Msg::Backspace); // fix
+        update(&mut model, Msg::Char('i')); // correct
+        assert_eq!(model.session.status, TestStatus::Done);
+        assert_eq!(model.screen, Screen::Results);
+    }
+
+    #[test]
+    fn backspace_blocked_when_previous_word_correct() {
+        let mut model = model_with_words(&["hi", "ok"]);
+        update(&mut model, Msg::Char('h'));
+        update(&mut model, Msg::Char('i')); // type "hi" exactly right
+        update(&mut model, Msg::Space); // commit and advance
+        assert_eq!(model.session.current_word, 1);
+        update(&mut model, Msg::Backspace); // try to retreat — should be blocked
+        assert_eq!(model.session.current_word, 1);
+        assert!(model.session.words[0].committed);
+    }
+
+    #[test]
+    fn backspace_allowed_when_previous_word_has_error() {
+        let mut model = model_with_words(&["hi", "ok"]);
+        update(&mut model, Msg::Char('h')); // only 'h' — wrong
+        update(&mut model, Msg::Space); // commit with error, advance
+        assert_eq!(model.session.current_word, 1);
+        update(&mut model, Msg::Backspace); // retreat — should be allowed
+        assert_eq!(model.session.current_word, 0);
+        assert!(!model.session.words[0].committed);
     }
 
     #[test]
@@ -594,21 +683,12 @@ mod tests {
         let mut model = model_with_words(&["hi"]);
         model.config.test_mode = TestMode::Words;
         update(&mut model, Msg::Char('h'));
-        update(&mut model, Msg::Space);
+        update(&mut model, Msg::Char('i')); // auto-ends test (word correct)
         assert_eq!(model.screen, Screen::Results);
         let elapsed_before = model.session.elapsed;
         update(&mut model, Msg::Tick(Duration::from_secs(100)));
         assert_eq!(model.session.elapsed, elapsed_before);
         assert_eq!(model.screen, Screen::Results);
-    }
-
-    #[test]
-    fn space_on_last_word_returns_save_stats_command() {
-        let mut model = model_with_words(&["hi"]);
-        model.config.test_mode = TestMode::Words;
-        update(&mut model, Msg::Char('h'));
-        let cmd = update(&mut model, Msg::Space);
-        assert!(matches!(cmd, Command::SaveStats(_)));
     }
 
     #[test]
@@ -789,16 +869,6 @@ mod tests {
     }
 
     #[test]
-    fn words_mode_space_on_last_word_ends_test() {
-        let mut model = model_with_words(&["hi"]);
-        model.config.test_mode = TestMode::Words;
-        update(&mut model, Msg::Char('h'));
-        let cmd = update(&mut model, Msg::Space);
-        assert_eq!(model.session.status, TestStatus::Done);
-        assert!(matches!(cmd, Command::SaveStats(_)));
-    }
-
-    #[test]
     fn words_mode_tick_does_not_expire_test() {
         let mut model = model_with_words(&["hello"]);
         model.config.test_mode = TestMode::Words;
@@ -824,9 +894,9 @@ mod tests {
         model.config.test_mode = TestMode::Words;
         model.session.elapsed = Duration::from_secs(7);
         update(&mut model, Msg::Char('h'));
-        // Manually set elapsed (Tick would update it but we want precise control)
+        // Manually reset elapsed (Tick would update it but we want precise control)
         model.session.elapsed = Duration::from_secs(7);
-        let cmd = update(&mut model, Msg::Space); // ends test
+        let cmd = update(&mut model, Msg::Char('i')); // last correct char → auto-ends
         if let Command::SaveStats(payload) = cmd {
             assert_eq!(payload.duration_secs, 7);
         } else {
@@ -900,12 +970,12 @@ mod tests {
 
     #[test]
     fn save_stats_accuracy_counts_corrected_errors() {
-        let mut model = model_with_words(&["hi"]);
+        // Use a 1-char word so the corrected char auto-ends the test via Char handler.
+        let mut model = model_with_words(&["a"]);
         model.config.test_mode = TestMode::Words;
-        update(&mut model, Msg::Char('x')); // wrong ('h' expected) → errors=1, typed=1
+        update(&mut model, Msg::Char('x')); // wrong → errors=1, total_chars_typed=1
         update(&mut model, Msg::Backspace);
-        update(&mut model, Msg::Char('h')); // correct → errors=1, typed=2
-        let cmd = update(&mut model, Msg::Space); // commit, last word → Done + SaveStats
+        let cmd = update(&mut model, Msg::Char('a')); // correct last char → auto-ends
         // accuracy = (2 - 1) / 2 * 100 = 50.0
         if let Command::SaveStats(payload) = cmd {
             assert!((payload.accuracy - 50.0).abs() < 0.01);
@@ -1236,6 +1306,42 @@ mod tests {
         );
         assert!(matches!(cmd, Command::GenerateWords { .. }));
     }
+
+    #[test]
+    fn overtype_up_to_cap_is_accepted() {
+        // "hi" has chars.len() = 2, cap = 2 + 20 = 22
+        let mut model = model_with_words(&["hi"]);
+        update(&mut model, Msg::Char('h'));
+        update(&mut model, Msg::Char('i'));
+        for _ in 0..20 {
+            update(&mut model, Msg::Char('x'));
+        }
+        assert_eq!(model.session.words[0].typed.len(), 22);
+    }
+
+    #[test]
+    fn overtype_beyond_cap_is_blocked() {
+        let mut model = model_with_words(&["hi"]);
+        update(&mut model, Msg::Char('h'));
+        update(&mut model, Msg::Char('i'));
+        for _ in 0..21 {
+            update(&mut model, Msg::Char('x'));
+        }
+        // 21st extra char must be rejected — max is chars.len() + 20 = 22
+        assert_eq!(model.session.words[0].typed.len(), 22);
+    }
+
+    #[test]
+    fn overtype_chars_increment_errors() {
+        let mut model = model_with_words(&["hi"]);
+        update(&mut model, Msg::Char('h'));
+        update(&mut model, Msg::Char('i'));
+        let errors_before = model.session.total_errors;
+        let typed_before = model.session.total_chars_typed;
+        update(&mut model, Msg::Char('x')); // extra char — always an error
+        assert_eq!(model.session.total_chars_typed, typed_before + 1);
+        assert_eq!(model.session.total_errors, errors_before + 1);
+    }
 }
 
 #[cfg(test)]
@@ -1275,13 +1381,13 @@ mod prop_tests {
         }
 
         #[test]
-        fn typed_len_never_exceeds_word_len(actions in prop::collection::vec(arb_msg(), 0..100)) {
+        fn typed_len_never_exceeds_overtype_cap(actions in prop::collection::vec(arb_msg(), 0..100)) {
             let mut model = model_with_words(&["hi", "ok", "go", "be", "do"]);
             for msg in actions {
                 update(&mut model, msg);
                 for word in &model.session.words {
-                    // Overtype cap must hold under any input sequence.
-                    prop_assert!(word.typed.len() <= word.chars.len());
+                    // Overtype cap is word.chars.len() + 20.
+                    prop_assert!(word.typed.len() <= word.chars.len() + 20);
                 }
             }
         }

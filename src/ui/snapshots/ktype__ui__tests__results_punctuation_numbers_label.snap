@@ -1,16 +1,15 @@
 ---
 source: src/ui/mod.rs
+assertion_line: 233
 expression: output
 ---
                                                                [time] words   [15]  30  60  custom                                                              
                                                                                                                                                                 
-                    wpm                                                             no data                                                                     
-                    24                                                                                                                                          
+          wpm                                                                       no data                                                                     
+          24                                                                                                                                                    
                                                                                                                                                                 
-                    acc                                                                                                                                         
-                    100%                                                                                                                                        
-                                                                                                                                                                
-                                                                                                                                                                
+          acc                                                                                                                                                   
+          100%                                                                                                                                                  
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
@@ -22,7 +21,9 @@ expression: output
                                                                                                                                                                 
                                                                                                                                                                 
                                                                                                                                                                 
-                    test type                       raw                          consistency                   time                                             
-                    time 15                         24                           0%                            5s                                               
-                    english + punctuation + numbers                                                                                                             
+                                                                                                                                                                
+                                                                                                                                                                
+          test type                       raw                        characters                 consistency                time                                 
+          time 15                         24                         9/0/0/0                    0%                         5s                                   
+          english + punctuation + numbers                                                                                                                       
                                                                 [tab] change/restart   [esc] quit

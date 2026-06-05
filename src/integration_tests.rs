@@ -39,14 +39,15 @@ fn full_session_via_word_completion() {
     let mut rng = SmallRng::seed_from_u64(0);
     let mut model = two_word_model();
 
-    // Type one char of "hi", commit with Space → advances to "ok"
+    // Type "hi" correctly, commit with Space → advances to "ok"
     update(&mut model, Msg::Char('h'));
+    update(&mut model, Msg::Char('i'));
     let cmd = update(&mut model, Msg::Space);
     execute_command(&mut model, cmd, &mut rng);
 
-    // Type one char of "ok", commit with Space → last word → Done + SaveStats
+    // Type "ok" correctly → last word auto-ends on the final correct char
     update(&mut model, Msg::Char('o'));
-    let cmd = update(&mut model, Msg::Space);
+    let cmd = update(&mut model, Msg::Char('k'));
     execute_command(&mut model, cmd, &mut rng);
 
     assert_eq!(model.screen, Screen::Results);
@@ -82,10 +83,11 @@ fn tab_from_done_resets_session() {
 
     // Drive to Done via word completion
     update(&mut model, Msg::Char('h'));
+    update(&mut model, Msg::Char('i'));
     let cmd = update(&mut model, Msg::Space);
     execute_command(&mut model, cmd, &mut rng);
     update(&mut model, Msg::Char('o'));
-    let cmd = update(&mut model, Msg::Space);
+    let cmd = update(&mut model, Msg::Char('k'));
     execute_command(&mut model, cmd, &mut rng);
     assert_eq!(model.screen, Screen::Results);
 
@@ -192,23 +194,24 @@ fn raw_accuracy_includes_corrected_errors() {
         ..Model::default()
     };
 
-    // Type wrong char, backspace, then correct — error must persist
-    update(&mut model, Msg::Char('x')); // wrong ('h' expected)
+    // Type wrong char, backspace, then correct — error must persist in accuracy
+    update(&mut model, Msg::Char('x')); // wrong ('h' expected) → errors=1, typed=1
     update(&mut model, Msg::Backspace);
-    update(&mut model, Msg::Char('h')); // correct
-    let cmd = update(&mut model, Msg::Space); // commit "hi" (partially typed)
+    update(&mut model, Msg::Char('h')); // correct → errors=1, typed=2
+    let cmd = update(&mut model, Msg::Space); // commit "h" for "hi" (non-last, allowed)
     execute_command(&mut model, cmd, &mut rng);
 
-    update(&mut model, Msg::Char('o'));
-    let cmd = update(&mut model, Msg::Space); // commit "ok" → Done
+    // Type "ok" correctly → last word auto-ends on the final correct char
+    update(&mut model, Msg::Char('o')); // errors=1, typed=3
+    let cmd = update(&mut model, Msg::Char('k')); // errors=1, typed=4 → auto-ends
     execute_command(&mut model, cmd, &mut rng);
 
-    // total_chars_typed = 3 ('x', 'h', 'o'), total_errors = 1 ('x')
-    // accuracy = (3 - 1) / 3 * 100 ≈ 66.67%
+    // total_chars_typed = 4 ('x', 'h', 'o', 'k'), total_errors = 1 ('x')
+    // accuracy = (4 - 1) / 4 * 100 = 75.0%
     assert_eq!(model.screen, Screen::Results);
     let result = model.history.last().expect("stats saved");
     assert!(
-        (result.accuracy - 66.67).abs() < 0.1,
+        (result.accuracy - 75.0).abs() < 0.1,
         "accuracy was {}",
         result.accuracy
     );

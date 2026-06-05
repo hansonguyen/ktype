@@ -5,6 +5,10 @@ pub(crate) enum CharState {
     Untyped,
     Correct,
     Incorrect,
+    // Never returned by char_state (which only covers 0..chars.len()),
+    // but required so the exhaustive match in build_word_lines compiles.
+    #[allow(dead_code)]
+    Extra,
 }
 
 // Derives the display state of word.chars[idx] from what was typed.

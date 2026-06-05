@@ -1,5 +1,6 @@
 ---
 source: src/ui/mod.rs
+assertion_line: 358
 expression: output
 ---
                        [time] words   [15]  30  60  custom                      
@@ -22,7 +23,7 @@ acc                                         ⣀⠤⠔⠊⠁
                                 ⡜                                               
                  0 ⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⣀⡜                                                
                                1           2           3           4           5
-test type                       raw             consistency     time            
-time 15                         24              86%             5s              
+test type                       raw         characters  consistency time        
+time 15                         24          8/0/0/0     86%         5s          
 english                                                                         
                         [tab] change/restart   [esc] quit

@@ -173,7 +173,7 @@ fn word_line_indices(words: &[crate::domain::model::Word], width: u16) -> Vec<us
     for (i, word) in words.iter().enumerate() {
         // Clamp to available width so a single oversized word doesn't
         // cascade every subsequent word onto its own line.
-        let word_len = word.chars.len().min(max_width.max(1));
+        let word_len = word.typed.len().max(word.chars.len()).min(max_width.max(1));
         let needed = if line_width == 0 {
             word_len
         } else {
@@ -211,7 +211,27 @@ fn build_word_lines<'a>(model: &Model, width: u16) -> Vec<Line<'a>> {
         let spans = &mut all_lines[line_idx];
 
         if !spans.is_empty() {
-            spans.push(Span::styled(" ", fg(&model.theme.sub)));
+            // When the preceding word on this line is the current active word and exactly
+            // full (all chars typed, awaiting space), show the cursor on the separator so
+            // it stays visible at the word boundary — matching Monkeytype's behavior.
+            let cursor_on_sep = word_idx > 0
+                && line_indices[word_idx - 1] == line_idx
+                && word_idx - 1 == current_word
+                && {
+                    let w = &words[word_idx - 1];
+                    !w.committed && w.typed.len() == w.chars.len()
+                }
+                && matches!(
+                    model.config.caret_style,
+                    CaretStyle::Block | CaretStyle::Underline
+                );
+
+            let sep_style = if cursor_on_sep {
+                cursor_style(&model.config.caret_style, &model.theme)
+            } else {
+                fg(&model.theme.sub)
+            };
+            spans.push(Span::styled(" ", sep_style));
         }
 
         for (char_idx, &ch) in word.chars.iter().enumerate() {
@@ -234,10 +254,53 @@ fn build_word_lines<'a>(model: &Model, width: u16) -> Vec<Line<'a>> {
                     CharState::Correct => fg(&model.theme.text),
                     CharState::Incorrect => fg(&model.theme.error),
                     CharState::Untyped => fg(&model.theme.sub),
+                    // char_state is only called for 0..chars.len(), so Extra is unreachable
+                    // here, but the variant must be covered for exhaustive matching.
+                    CharState::Extra => fg(&model.theme.error),
                 }
             };
 
             spans.push(Span::styled(ch.to_string(), style));
+        }
+
+        // Extra chars beyond word length — always rendered as errors.
+        for extra_ch in word.typed.chars().skip(word.chars.len()) {
+            spans.push(Span::styled(extra_ch.to_string(), fg(&model.theme.error)));
+        }
+
+        // Cursor span for Block/Underline caret styles when in the extra region.
+        // Default caret uses the terminal cursor via cursor_screen_pos; Off shows nothing.
+        if word_idx == current_word && word.typed.len() > word.chars.len() && !word.committed {
+            match model.config.caret_style {
+                CaretStyle::Block | CaretStyle::Underline => {
+                    spans.push(Span::styled(
+                        " ",
+                        cursor_style(&model.config.caret_style, &model.theme),
+                    ));
+                }
+                CaretStyle::Off | CaretStyle::Default => {}
+            }
+        }
+
+        // Cursor span for Block/Underline when word is exactly full and last on its line.
+        // Mid-line exactly-full words use the space separator (see above); end-of-line
+        // words have no following separator, so the cursor span is placed here instead.
+        if word_idx == current_word && word.typed.len() == word.chars.len() && !word.committed {
+            match model.config.caret_style {
+                CaretStyle::Block | CaretStyle::Underline => {
+                    let next_on_same_line = words
+                        .get(word_idx + 1)
+                        .map(|_| line_indices.get(word_idx + 1) == Some(&line_idx))
+                        .unwrap_or(false);
+                    if !next_on_same_line {
+                        spans.push(Span::styled(
+                            " ",
+                            cursor_style(&model.config.caret_style, &model.theme),
+                        ));
+                    }
+                }
+                CaretStyle::Off | CaretStyle::Default => {}
+            }
         }
     }
 
@@ -287,7 +350,8 @@ fn apply_terminal_cursor(
 
 /// Computes the terminal cursor position (col, row) within `words_area` for the
 /// `Default` caret style, which delegates cursor rendering to the terminal.
-/// Returns `None` if the cursor is not visible (word committed or fully typed).
+/// Returns `None` only when the word is committed; stays visible at the word
+/// boundary (typed.len() == chars.len()) matching Monkeytype's behavior.
 fn cursor_screen_pos(model: &Model, words_area: Rect) -> Option<(u16, u16)> {
     let words = &model.session.words;
     if words.is_empty() {
@@ -295,7 +359,7 @@ fn cursor_screen_pos(model: &Model, words_area: Rect) -> Option<(u16, u16)> {
     }
     let current_word = model.session.current_word.min(words.len() - 1);
     let word = &words[current_word];
-    if word.committed || word.typed.len() >= word.chars.len() {
+    if word.committed {
         return None;
     }
 
@@ -317,8 +381,8 @@ fn cursor_screen_pos(model: &Model, words_area: Rect) -> Option<(u16, u16)> {
         if i == current_word {
             break;
         }
-        // Mirror word_line_indices' max_width.max(1) clamp so column math stays in sync.
-        col += w.chars.len().min(max_width.max(1)) as u16;
+        // Mirror word_line_indices' logic: use max of typed and chars len, clamped to max_width.
+        col += w.typed.len().max(w.chars.len()).min(max_width.max(1)) as u16;
         is_first_on_line = false;
     }
     col += word.typed.len() as u16;
@@ -354,6 +418,36 @@ mod tests {
             },
             ..Model::default()
         }
+    }
+
+    #[test]
+    fn word_line_indices_overtyped_word_pushes_next_to_next_line() {
+        // "hi" with 5 extra chars → rendered width 7.
+        // Container width 9: 7 + 1 (space) + 2 ("ok") = 10 > 9 → "ok" wraps.
+        let mut words = vec![Word::new("hi"), Word::new("ok")];
+        words[0].typed = "hixxxxx".to_string(); // 5 extra chars
+        let indices = word_line_indices(&words, 9);
+        assert_eq!(indices[0], 0);
+        assert_eq!(indices[1], 1);
+    }
+
+    #[test]
+    fn word_line_indices_untouched_word_uses_chars_len() {
+        // No typing yet — layout based purely on expected lengths.
+        let words = vec![Word::new("hello"), Word::new("world")];
+        let indices = word_line_indices(&words, 80);
+        assert_eq!(indices[0], 0);
+        assert_eq!(indices[1], 0);
+    }
+
+    #[test]
+    fn word_line_indices_overtyped_within_line_stays_same_line() {
+        // "hi" + 1 extra → rendered 3. Container 80: easily fits both words.
+        let mut words = vec![Word::new("hi"), Word::new("ok")];
+        words[0].typed = "hix".to_string();
+        let indices = word_line_indices(&words, 80);
+        assert_eq!(indices[0], 0);
+        assert_eq!(indices[1], 0);
     }
 
     // cursor_style() unit tests — verify span-level styling for each rendered variant.
@@ -428,5 +522,48 @@ mod tests {
             height: 3,
         };
         assert_eq!(cursor_screen_pos(&model, area), Some((46, 5)));
+    }
+
+    #[test]
+    fn cursor_screen_pos_visible_when_word_exactly_full() {
+        // "hi" fully typed — cursor stays visible at col 2 (the space after the word),
+        // matching Monkeytype's behavior of keeping the cursor at the word boundary.
+        let model = test_model(&["hi", "ok"], 0, &["hi"]);
+        let area = ratatui::layout::Rect {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 3,
+        };
+        assert_eq!(cursor_screen_pos(&model, area), Some((2, 0)));
+    }
+
+    #[test]
+    fn cursor_screen_pos_visible_when_typed_exceeds_word_len() {
+        // "hi" with 1 extra char typed ("hix") → cursor at col 3.
+        let model = test_model(&["hi"], 0, &["hix"]);
+        let area = ratatui::layout::Rect {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 3,
+        };
+        assert_eq!(cursor_screen_pos(&model, area), Some((3, 0)));
+    }
+
+    #[test]
+    fn cursor_screen_pos_col_accounts_for_overtyped_preceding_word() {
+        // "the" committed with 2 extra chars typed ("theXX", rendered width 5).
+        // Cursor at start of "quick" (nothing typed yet).
+        // Expected col = 5 (rendered "theXX") + 1 (space separator) + 0 (nothing typed) = 6.
+        let mut model = test_model(&["the", "quick"], 1, &["theXX"]);
+        model.session.words[0].committed = true;
+        let area = ratatui::layout::Rect {
+            x: 0,
+            y: 0,
+            width: 80,
+            height: 3,
+        };
+        assert_eq!(cursor_screen_pos(&model, area), Some((6, 0)));
     }
 }
